@@ -90,7 +90,7 @@
       headers: ['Department', 'Back per $1', 'Low', 'High', 'Confidence'],
       rows: d.map(x => [x.name, per1(x.p), per1(x.lo), per1(x.hi), labelOf(x)])
     });
-    const W = widthOf(plot), narrow = W < 480, rowH = 38, top = 28, left = narrow ? 84 : 104, right = narrow ? 56 : 74, bottom = 40, H = top + rowH * d.length + bottom;
+    const W = widthOf(plot), narrow = W < 480, rowH = 38, top = 28, left = narrow ? 84 : 104, right = narrow ? 52 : 70, bottom = 40, H = top + rowH * d.length + bottom;
     // log scale: return per $1 is a ratio, so $0.50 and $2.00 are equally far from break-even
     const g = v => Math.max(v, 0.1);
     const lo = Math.pow(2, Math.floor(Math.log2(Math.min(...d.map(x => g(x.lo)), 0.5)))), hi = Math.pow(2, Math.ceil(Math.log2(Math.max(...d.map(x => x.hi), 2))));
@@ -106,14 +106,14 @@
     s.appendChild(el('line', { x1: X(1), x2: X(1), y1: top - 10, y2: H - bottom + 4, stroke: C.text, 'stroke-opacity': 0.7, 'stroke-width': 1.5 }));
     s.appendChild(el('text', { x: X(1), y: top - 14, 'text-anchor': 'middle', fill: C.text, 'font-size': 11 }, 'break-even $1.00'));
     s.appendChild(el('text', { x: (left + W - right) / 2, y: H - 4, 'text-anchor': 'middle', fill: C.mute, 'font-size': 11 }, 'dollars back per $1 spent (log scale)'));
-    const maxP = Math.max(...d.map(x => x.p)), minP = Math.min(...d.map(x => x.p));
+    s.appendChild(el('text', { x: W - 6, y: top - 14, 'text-anchor': 'end', fill: C.mute, 'font-size': 11 }, 'back per $1'));
     d.forEach((x, i) => {
       const y = top + i * rowH + rowH / 2, col = colorOf(x);
       s.appendChild(el('text', { x: left - 10, y: y + 4, 'text-anchor': 'end', fill: C.text, 'font-size': 12 }, x.name));
       s.appendChild(el('line', { x1: X(x.lo), x2: X(x.hi), y1: y, y2: y, stroke: col, 'stroke-width': 2, 'stroke-linecap': 'round' }));
       for (const e of [x.lo, x.hi]) s.appendChild(el('line', { x1: X(e), x2: X(e), y1: y - 5, y2: y + 5, stroke: col, 'stroke-width': 2 }));
       s.appendChild(el('circle', { cx: X(x.p), cy: y, r: 5, fill: col, stroke: C.surface, 'stroke-width': 2 }));
-      if (x.conf === 'clear' || x.p === maxP || x.p === minP) s.appendChild(el('text', { x: X(x.hi) + 10, y: y + 4, fill: C.text, 'font-size': 12 }, per1(x.p)));
+      s.appendChild(el('text', { x: W - 6, y: y + 4, 'text-anchor': 'end', fill: C.text, 'font-size': 12, 'font-weight': x.conf === 'clear' ? 600 : 400 }, per1(x.p)));  // every row gets its number, in an aligned column
       const hit = el('rect', { x: 0, y: top + i * rowH, width: W, height: rowH, fill: 'transparent' });
       hover(hit, () => x.name, () => [{ color: col, value: per1(x.p), label: 'back per $1' }, { value: per1(x.lo) + ' to ' + per1(x.hi), label: '95% range' }, { value: labelOf(x), label: x.verdict ? '· ' + x.verdict + ' budget' : '' }]);
       s.appendChild(hit);
