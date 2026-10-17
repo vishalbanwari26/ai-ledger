@@ -236,7 +236,63 @@
     plot.appendChild(s);
   }
 
-  const REG = [['c-forest', forest], ['c-split', split], ['c-index', index], ['c-trade', tradeoff]];
+    // =====================================================================================
+  // 5. Published evidence: output studies (with your estimate as a band) and time-on-task studies, on separate axes
+  const TINY = { 'murphy-hill-2026': 'Microsoft', 'cui-2025': '3 field exps.*', 'brynjolfsson-2023': 'Support', 'dellacqua-2023': 'Consultants',
+                 'peng-2023': 'Copilot task', 'paradis-2024': 'Google', 'becker-2025': 'METR' };
+  function evidence(host, r) {
+    const E = window.EVIDENCE; if (!E) { host.textContent = 'Loading evidence…'; return; }
+    const out = E.studies.filter(x => x.metric === 'output').sort((a, b) => b.value - a.value);
+    const tim = E.studies.filter(x => x.metric === 'time').sort((a, b) => a.value - b.value);
+    const cmp = E.comparison;
+    const plot = shell(host, {
+      title: 'What published studies found', sub: 'Two different measures, so two separate axes. Gray is a published study; blue is this tool\'s estimate for your data. Context, not proof: the studies differ in setting, tools and who took part. * The range is our own, from the reported standard error.',
+      legend: [{ label: 'Published study (line = 95% range where given)', color: '#aab2bd' }, { label: 'Your estimate and its range', color: C.c1 }],
+      headers: ['Study', 'Measure', 'Result', 'Range'],
+      rows: E.studies.map(x => [x.short + ' (' + x.year + ')', x.measure, x.value == null ? 'see detail' : (x.value > 0 && x.metric === 'output' ? '+' : '') + x.value + '%', x.lo == null ? 'not given' : x.lo.toFixed(1) + '% to ' + x.hi.toFixed(1) + '%'])
+    });
+    const W = widthOf(plot), narrow = W < 480, gridC = C.grid, right = 56, rowH = 34;
+    const name = x => narrow ? TINY[x.id] || x.short : x.short + (x.ci_derived ? '*' : '');
+    const left = Math.min(Math.round(W * 0.42), Math.max(narrow ? 84 : 120, Math.max(...E.studies.map(x => name(x).length)) * (narrow ? 6.1 : 6.6) + 22));
+    const panel = (title, rows, lo, hi, tickStep, fmt, xlabel, zero, band) => {
+      const top = band ? 46 : 34, bottom = 36, H = top + rowH * rows.length + bottom;
+      const X = v => left + (v - lo) / (hi - lo) * (W - left - right);
+      const s = svg(W, H);
+      s.appendChild(el('text', { x: 4, y: 14, fill: C.text, 'font-size': 12, 'font-weight': 600 }, title));
+      const step = narrow ? tickStep * 2 : tickStep;
+      for (let t = Math.ceil(lo / step) * step; t <= hi + 1e-9; t += step) {
+        s.appendChild(el('line', { x1: X(t), x2: X(t), y1: top - 6, y2: H - bottom + 4, stroke: gridC, 'stroke-width': 1 }));
+        s.appendChild(el('text', { x: X(t), y: H - bottom + 18, 'text-anchor': 'middle', fill: C.mute, 'font-size': 11 }, fmt(t)));
+      }
+      if (band) {
+        s.appendChild(el('rect', { x: X(Math.max(lo, band.lo)), y: top - 6, width: Math.max(2, X(Math.min(hi, band.hi)) - X(Math.max(lo, band.lo))), height: H - bottom + 10 - (top - 6), fill: C.c1, 'fill-opacity': 0.14 }));
+        s.appendChild(el('line', { x1: X(band.est), x2: X(band.est), y1: top - 6, y2: H - bottom + 4, stroke: C.c1, 'stroke-width': 2 }));
+        s.appendChild(el('text', { x: Math.min(X(band.est) + 5, W - 120), y: top - 12, fill: C.text, 'font-size': 11 }, 'Your estimate ' + band.est.toFixed(1) + '%'));
+      }
+      if (zero) s.appendChild(el('line', { x1: X(0), x2: X(0), y1: top - 6, y2: H - bottom + 4, stroke: C.text, 'stroke-opacity': 0.6, 'stroke-width': 1.5 }));
+      s.appendChild(el('text', { x: (left + W - right) / 2, y: H - 4, 'text-anchor': 'middle', fill: C.mute, 'font-size': 11 }, xlabel));
+      rows.forEach((x, i) => {
+        const y = top + i * rowH + rowH / 2;
+        s.appendChild(el('text', { x: left - 10, y: y + 4, 'text-anchor': 'end', fill: C.text, 'font-size': narrow ? 11 : 12 }, name(x)));
+        if (x.lo != null) {
+          s.appendChild(el('line', { x1: X(Math.max(lo, x.lo)), x2: X(Math.min(hi, x.hi)), y1: y, y2: y, stroke: '#aab2bd', 'stroke-width': 2, 'stroke-linecap': 'round' }));
+          for (const e of [x.lo, x.hi]) if (e >= lo && e <= hi) s.appendChild(el('line', { x1: X(e), x2: X(e), y1: y - 5, y2: y + 5, stroke: '#aab2bd', 'stroke-width': 2 }));
+        }
+        s.appendChild(el('circle', { cx: X(x.value), cy: y, r: 5, fill: '#aab2bd', stroke: C.surface, 'stroke-width': 2 }));
+        const edge = x.hi != null ? Math.min(hi, x.hi) : x.value;
+        s.appendChild(el('text', { x: X(edge) + 10, y: y + 4, fill: C.text, 'font-size': 12 }, (x.value > 0 ? '+' : '') + x.value.toFixed(x.value % 1 ? 1 : 0) + '%'));
+        const hit = el('rect', { x: 0, y: top + i * rowH, width: W, height: rowH, fill: 'transparent' });
+        hover(hit, () => x.short + ' (' + x.year + ')', () => [{ color: '#aab2bd', value: (x.value > 0 ? '+' : '') + x.value + '%', label: x.measure }, { value: x.n, label: x.setting }, { value: x.lo == null ? 'not given' : x.lo.toFixed(1) + '% to ' + x.hi.toFixed(1) + '%', label: x.ci_derived ? '95% range (derived by us)' : '95% range' }]);
+        s.appendChild(hit);
+      });
+      return s;
+    };
+    const fmtp = v => (v > 0 ? '+' : '') + v + '%';
+    plot.appendChild(panel('More output (tasks, pull requests, issues per hour). Higher is better.', out, Math.min(0, Math.floor(Math.min(cmp.your_low, ...out.map(x => x.lo == null ? x.value : x.lo)) / 10) * 10), Math.ceil(Math.max(...out.map(x => x.hi == null ? x.value : x.hi), cmp.your_high) / 10) * 10 + 5, 10, fmtp, '% change in output', true, { est: cmp.your_effect, lo: cmp.your_low, hi: cmp.your_high }));
+    plot.appendChild(panel('Time to finish a task. Left is faster.', tim, -100, 30, 25, fmtp, '% change in time on the task', true, null));
+  }
+
+  const REG = [['c-forest', forest], ['c-split', split], ['c-index', index], ['c-trade', tradeoff], ['c-evidence', evidence]];
   let last = null, timer = null;
   window.renderCharts = function (r) {
     if (r) last = r; if (!last) return;

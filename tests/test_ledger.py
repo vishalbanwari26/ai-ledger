@@ -489,3 +489,69 @@ def test_charts_never_use_untrusted_html_injection():
     import pathlib
     js = (pathlib.Path(__file__).resolve().parent.parent / "static/charts.js").read_text()
     assert "innerHTML" not in js  # department names come from uploaded CSVs: textContent only
+
+
+# ---------------------------------------------------------------- published evidence
+
+def test_every_study_is_sourced_and_labelled():
+    from ailedger import evidence as ev
+    ids = set()
+    for s in ev.STUDIES:
+        assert s["url"].startswith("https://") and s["verified"].strip() and s["reported"].strip()
+        assert s["metric"] in {"output", "time", "sd", "null"} and s["year"] >= 2023 and s["id"] not in ids
+        ids.add(s["id"])
+        if s["metric"] in {"output", "time"}:
+            assert isinstance(s["value"], (int, float))
+        if s["lo"] is not None:
+            assert s["lo"] <= s["value"] <= s["hi"]
+    assert {s["metric"] for s in ev.STUDIES} == {"output", "time", "sd", "null"}
+
+
+def test_figures_match_what_was_read_in_the_sources():
+    from ailedger import evidence as ev
+    by = {s["id"]: s for s in ev.STUDIES}
+    assert abs((160.89 - 71.17) / 160.89 * 100 - 55.8) < 0.05                    # Peng: 55.8% less time, from the paper's own minutes
+    assert by["peng-2023"]["value"] == -55.8 and (by["peng-2023"]["lo"], by["peng-2023"]["hi"]) == (-89.0, -21.0)
+    assert by["cui-2025"]["value"] == 26.08 and by["cui-2025"]["ci_derived"]
+    assert abs(by["cui-2025"]["hi"] - (26.08 + 1.96 * 10.3)) < 1e-9               # range is ours, flagged as derived
+    assert by["becker-2025"]["value"] == 19.0 and by["murphy-hill-2026"]["value"] == 24.0
+    assert by["brynjolfsson-2023"]["value"] == 14.0 and by["dellacqua-2023"]["value"] == 12.2
+    assert by["noy-zhang-2023"]["value"] is None  # reported in standard deviations: never forced onto a percent axis
+
+
+def test_unverified_figures_stay_out_of_the_studies():
+    from ailedger import evidence as ev
+    text = " ".join(str(v) for s in ev.STUDIES for v in s.values()).lower()
+    for bad in ("40% less time", "18% higher quality", "19 percentage points", "2.8%"):
+        assert bad not in text
+    assert any("could not be confirmed" in x for x in ev.LEFT_OUT)
+
+
+def test_comparison_verdicts():
+    from ailedger import evidence as ev
+    mk = lambda e, lo, hi: {"did_lift": e / 100, "did_ci_low": lo / 100, "did_ci_high": hi / 100}  # noqa: E731
+    assert ev.compare(mk(19, 15, 23))["verdict"] == "within"
+    assert ev.compare(mk(7, 5, 9))["verdict"] == "below"
+    assert ev.compare(mk(8, 5, 14))["verdict"] == "below_overlapping"
+    assert ev.compare(mk(40, 35, 45))["verdict"] == "above"
+    assert ev.compare(mk(30, 20, 40))["verdict"] == "above_overlapping"
+    assert ev.compare(mk(-3, -6, 0))["verdict"] == "none"
+
+
+def test_comparison_uses_only_output_studies():
+    from ailedger import evidence as ev
+    r = ev.published_output_range()
+    assert (r["min"], r["max"], r["n"]) == (12.2, 26.08, 4)  # time-on-task and standard-deviation studies are never mixed in
+
+
+def test_evidence_endpoint_matches_the_dashboard_estimate():
+    c = TestClient(app)
+    g = c.get("/api/evidence").json()
+    s = c.get("/api/report").json()["summary"]["company"]
+    assert len(g["studies"]) == 9 and g["verified_on"]
+    assert abs(g["comparison"]["your_effect"] - s["did_lift"] * 100) < 0.01
+    assert g["comparison"]["your_low"] <= g["comparison"]["your_effect"] <= g["comparison"]["your_high"]
+
+
+def test_analyst_is_told_realization_does_not_change_the_output_effect():
+    assert "before the realization share" in llm.SYSTEM and "get_evidence" in llm.SYSTEM

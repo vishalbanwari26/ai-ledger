@@ -268,8 +268,12 @@ def summary(ds: Dataset, a: Assumptions) -> dict:
     nt = sum(s["treated_n"] for s in stats.values()) or 1
     ctrl = sum(s["control_growth"] * s["treated_n"] for s in stats.values()) / nt
     n_avg = sum(naive) / nt
+    # company range: treated-weighted average of the department ranges (assumes their errors move together, so it is wide)
+    ci_lo = sum(x["ci_low"] * x["treated_n"] for x in stats.values()) / nt
+    ci_hi = sum(x["ci_high"] * x["treated_n"] for x in stats.values()) / nt
     company = _roll(es, a) | dict(naive_lift=round(n_avg, 4), control_growth=round(ctrl, 4),
-                                 did_lift=round((1 + n_avg) / (1 + ctrl) - 1, 4), selection=selection(ds, a))
+                                 did_lift=round((1 + n_avg) / (1 + ctrl) - 1, 4), did_ci_low=round(ci_lo, 4),
+                                 did_ci_high=round(ci_hi, 4), selection=selection(ds, a))
     order = ["intern", "junior", "mid", "senior"]
     return dict(
         assumptions=a.__dict__,

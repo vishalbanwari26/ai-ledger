@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from openai import OpenAI
 
 from . import analysis as an
+from . import evidence as ev
 from .data import Dataset
 
 BASE_URL = os.environ.get("NEBIUS_BASE_URL", "https://api.tokenfactory.nebius.com/v1/")
@@ -57,6 +58,11 @@ Rules:
   ceiling_per_head is the most one active person may use (seat plus cap). Never compare the ceiling with the average.
 - Separate solid savings (unused seats) from potential savings (high spend). The plan saves almost only through
   seats; above-norm spend is recovered only through training or hard caps, and hard caps cost output (get_plan_savings).
+- If asked about published research or whether the estimate is believable, call get_evidence. Quote only numbers it
+  returns, name the study, and say what it measured (time on a task, tasks completed, issues per hour). Never convert
+  between those measures, and say the comparison is context, not proof.
+- The AI effect on output (for example 7.1%) is measured before the realization share. Realization only turns that effect
+  into dollars. Never use it to explain a difference from published output effects.
 - Be direct. Lead with the answer, then the two or three numbers that support it. No filler."""
 
 TOOLS = [
@@ -75,6 +81,10 @@ TOOLS = [
     {"type": "function", "function": {
         "name": "get_plan_savings", "description": "What the 'Variable by role' plan actually saves, split into reassigned "
         "unused seats and caps, per department, plus what hard per-person caps would save and cost in output.",
+        "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {
+        "name": "get_evidence", "description": "Published studies on AI and productivity (with sources, designs, effect sizes, "
+        "what was verified), and how this tool's company-wide estimate compares with the published output effects.",
         "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {
         "name": "get_actions", "description": "Proposed changes (reclaim seats, cap token spend) per department and level, "
@@ -153,6 +163,8 @@ class Analyst:
             return an.robustness(ds, a)
         if name == "get_plan_savings":
             return an.plan_savings(ds, a)
+        if name == "get_evidence":
+            return ev.payload(an.summary(ds, a)["company"])
         if name == "get_actions":
             return an.actions(ds, a)
         if name == "get_routing":

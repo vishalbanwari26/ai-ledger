@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from . import analysis as an
 from . import data
+from . import evidence as ev
 from .llm import Analyst
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
@@ -74,6 +75,12 @@ def healthz():
 @app.get("/api/report")
 def report(request: Request, response: Response):
     return _report(get_state(request, response))
+
+
+@app.get("/api/evidence")
+def evidence(request: Request, response: Response):
+    st = get_state(request, response)
+    return ev.payload(an.summary(st.ds, st.assumptions)["company"])
 
 
 @app.get("/api/robustness")

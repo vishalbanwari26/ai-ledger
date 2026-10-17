@@ -82,7 +82,7 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
   <nav class="tabs" id="tabs">
     <button data-tab="overview" class="on">Overview</button><button data-tab="waste">Waste and actions</button>
     <button data-tab="budget">Budget policy</button><button data-tab="real">Is the return real?</button>
-    <button data-tab="math">Show the math</button><button data-tab="ask">Ask</button><button data-tab="glossary">Glossary</button></nav>
+    <button data-tab="math">Show the math</button><button data-tab="ask">Ask</button><button data-tab="evidence">Evidence</button><button data-tab="glossary">Glossary</button></nav>
 
   <div class="tab" id="tab-overview">
     <div class="grid three">
@@ -150,6 +150,14 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
       <div class="mute" style="max-width:640px">Every figure above is built from these steps, with this department's own numbers and your current sliders. Only averages and totals appear. No individual is shown.</div></div>
     <div id="msteps" class="grid"></div>
     <h2 style="margin-top:16px">Budget policies</h2><div id="mpols" class="grid"></div></div>
+  </div>
+  <div class="tab" id="tab-evidence" hidden>
+    <div class="card"><h2>Does the published research support these numbers?</h2>
+      <p id="evtext" style="margin:0 0 8px"></p><ul id="evctx" class="note" style="margin:0;padding-left:20px"></ul>
+      <p class="note" id="evnote"></p></div>
+    <div class="card chart" id="c-evidence"></div>
+    <div class="card"><h2>The studies, with what was checked</h2><div id="evlist" class="gl"></div></div>
+    <div class="card"><h2>Left out on purpose</h2><ul id="evleft" class="note" style="margin:0;padding-left:20px"></ul></div>
   </div>
   <div class="tab" id="tab-glossary" hidden>
     <div class="card"><label for="gsearch">Search terms</label>
@@ -244,6 +252,10 @@ const GL=[
   r=>`A junior in Support is compared with other Support juniors, not with senior Legal counsel.`],
  ['Trust and fairness','Minimum group size','Results are shown only for groups of 10 or more, and no individual is named, ranked or exported. Small groups are first merged within their department, then pooled across departments, and anything still under 10 is hidden.',
   r=>`7 Legal interns and 5 Legal seniors are shown together as "Legal, all levels" (12 people). Had they totalled 8, they would be hidden.`],
+ ['Trust and fairness','Published evidence','Studies by outside researchers on AI and productivity. They measure different things (time on one task, tasks completed, issues per hour), in different settings, so the page compares your estimate only with studies that measure output and never converts between measures. It is context, not proof.',
+  r=>{const e=window.EVIDENCE;return e?`In this data: your estimate is <b>${e.comparison.your_effect}%</b>; published output studies range <b>${e.comparison.published.min}%</b> to <b>${e.comparison.published.max}%</b> (median ${e.comparison.published.median}%).`:'Open the Evidence tab to load it.'}],
+ ['Trust and fairness','Time on a task vs output','Time on a task asks how fast one job gets done. Output asks how much work gets done over weeks. A 50% faster task does not mean 50% more output, because time is also spent on reviewing, meetings and fixing what the tool got wrong.',
+  r=>`A task that takes 100 minutes now takes 60: 40% less time on that task. If the task is 20% of someone's week, that is 8% of the week, before any rework.`],
  ['Trust and fairness','Synthetic data','The demo company is generated with known patterns, so the tool can be scored against the truth. Your real data goes through the same steps, but the truth is unknown, so rely on the ranges.',
   r=>`In this data: ${r.rows.toLocaleString()} employee-month rows. Upload your own CSV from the Data and assumptions drawer.`],
 ];
@@ -332,7 +344,20 @@ function sumActs(){const ks=[...document.querySelectorAll('.ak:checked')];const 
   $('actsum').textContent=ks.length?`${ks.length} approved: ${usd(s)}/mo, ${usd(s*12)}/yr`:'Nothing approved yet'}
 function dl(){const ids=[...document.querySelectorAll('.ak:checked')].map(k=>k.dataset.id).join(',');
   if(!ids){$('uerr').textContent='Tick at least one action first.';return}$('uerr').textContent='';location.href='/api/actions.csv?ids='+ids}
-async function load(){render(await j('/api/report'));loadRob();loadMath(mdept)}
+async function load(){render(await j('/api/report'));loadRob();loadMath(mdept);loadEvidence()}
+async function loadEvidence(){try{const g=await j('/api/evidence');window.EVIDENCE=g;const c=g.comparison;
+  $('evtext').textContent=c.text;$('evctx').replaceChildren(...c.context.map(t=>{const li=document.createElement('li');li.textContent=t;return li}));
+  $('evnote').textContent='Numbers were read from the sources linked below on '+g.verified_on+'. Where a figure could not be confirmed from a primary source it is marked, or left out.';
+  $('evleft').replaceChildren(...g.left_out.map(t=>{const li=document.createElement('li');li.textContent=t;return li}));
+  $('evlist').replaceChildren(...g.studies.map(x=>{const d=document.createElement('div');d.className='card gt';
+    const h=document.createElement('h3');const a=document.createElement('a');a.textContent=x.short+' ('+x.year+')';if(/^https:\/\//.test(x.url)){a.href=x.url;a.target='_blank';a.rel='noopener'}a.style.color='var(--accent)';h.appendChild(a);d.appendChild(h);
+    const p=document.createElement('p');p.textContent=x.reported;d.appendChild(p);
+    const m=document.createElement('p');m.className='mute';m.style.fontSize='12px';m.textContent=x.authors+'. '+x.design+'. '+x.n+'.';d.appendChild(m);
+    const dt=document.createElement('details');const sm=document.createElement('summary');sm.textContent='Caveats and what was verified';dt.appendChild(sm);
+    const c1=document.createElement('p');c1.className='mute';c1.style.fontSize='12px';c1.textContent='Caveats: '+x.caveats;dt.appendChild(c1);
+    const c2=document.createElement('p');c2.className='mute';c2.style.fontSize='12px';c2.textContent='Verified: '+x.verified;dt.appendChild(c2);d.appendChild(dt);return d}));
+  if(window.renderCharts)window.renderCharts()}catch(e){$('evtext').textContent='Could not load the evidence: '+e.message}}
+
 let mdept='';
 async function loadMath(d){try{const g=await j('/api/explain'+(d?('?department='+encodeURIComponent(d)):''));const e=g.department;mdept=e.department;
   $('mdept').innerHTML=e.departments.map(x=>`<option ${x===mdept?'selected':''}>${x}</option>`).join('');
@@ -352,11 +377,11 @@ async function loadRob(){$('robnote').textContent='Computing 180 assumption scen
 
 let tm;function sliders(){$('rv').textContent=real.value+'%';$('ev').textContent=(elas.value/100).toFixed(1);$('cv').textContent=(cheap.value/100).toFixed(2);$('pv').textContent=(ppu.value/100).toFixed(1)+'x';
   clearTimeout(tm);tm=setTimeout(async()=>{try{render(await j('/api/assumptions',{method:'POST',headers:{'Content-Type':'application/json'},
-   body:JSON.stringify({realization:real.value/100,elasticity:elas.value/100,cheap_price_per_m:cheap.value/100,ppu_multiplier:ppu.value/100})}));loadRob();loadMath(mdept)}catch(e){$('uerr').textContent=e.message}},250)}
+   body:JSON.stringify({realization:real.value/100,elasticity:elas.value/100,cheap_price_per_m:cheap.value/100,ppu_multiplier:ppu.value/100})}));loadRob();loadMath(mdept);loadEvidence()}catch(e){$('uerr').textContent=e.message}},250)}
 real.oninput=elas.oninput=cheap.oninput=ppu.oninput=sliders;
 $('file').onchange=async e=>{$('uerr').textContent='';const f=new FormData();f.append('file',e.target.files[0]);
-  try{render(await j('/api/upload',{method:'POST',body:f}));loadRob();loadMath(mdept);$('src').textContent=e.target.files[0].name}catch(err){$('uerr').textContent=err.message}};
-async function reset(){$('uerr').textContent='';render(await j('/api/reset',{method:'POST'}));loadRob();loadMath(mdept);$('src').textContent='synthetic company';real.value=50;elas.value=50;cheap.value=60;ppu.value=160;$('rv').textContent='50%';$('ev').textContent='0.5';$('cv').textContent='0.60';$('pv').textContent='1.6x'}
+  try{render(await j('/api/upload',{method:'POST',body:f}));loadRob();loadMath(mdept);loadEvidence();$('src').textContent=e.target.files[0].name}catch(err){$('uerr').textContent=err.message}};
+async function reset(){$('uerr').textContent='';render(await j('/api/reset',{method:'POST'}));loadRob();loadMath(mdept);loadEvidence();$('src').textContent='synthetic company';real.value=50;elas.value=50;cheap.value=60;ppu.value=160;$('rv').textContent='50%';$('ev').textContent='0.5';$('cv').textContent='0.60';$('pv').textContent='1.6x'}
 async function brief(){$('bb').disabled=true;$('brief').textContent='Thinking…';
   try{const b=await j('/api/brief');$('brief').textContent=b.brief+'\n\nmodel: '+b.model}catch(e){$('brief').innerHTML='<span class=err></span>';$('brief').firstChild.textContent=e.message}
   $('bb').disabled=false}
