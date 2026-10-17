@@ -9,6 +9,12 @@ less. Nothing here changes the tool's estimate.
 from __future__ import annotations
 
 import statistics as st
+from decimal import ROUND_HALF_UP, Decimal
+
+def p1(x: float) -> str:
+    """One decimal, halves rounded up. Matches what the page shows (JavaScript rounds halves up; Python rounds to even)."""
+    return str(Decimal(str(round(x, 6))).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
+
 
 VERIFIED_ON = "2026-10-18"
 
@@ -146,24 +152,24 @@ def compare(company: dict) -> dict:
     pr = published_output_range()
     if est > pr["max"]:
         verdict = "above" if lo > pr["max"] else "above_overlapping"
-        text = (f"Your estimate ({est:.1f}%) is higher than every published output study (up to {pr['max']:.1f}%). "
+        text = (f"Your estimate ({p1(est)}%) is higher than every published output study (up to {p1(pr['max'])}%). "
                 + ("Even the low end of your range is higher, so check for a measurement or selection problem."
                    if verdict == "above" else "Your range reaches down into the published results, so it is not clearly out of line."))
     elif est >= pr["min"]:
         verdict = "within"
-        text = (f"Your estimate ({est:.1f}%) sits inside the range of published output effects "
-                f"({pr['min']:.1f}% to {pr['max']:.1f}%, median {pr['median']:.1f}%).")
+        text = (f"Your estimate ({p1(est)}%) sits inside the range of published output effects "
+                f"({p1(pr['min'])}% to {p1(pr['max'])}%, median {p1(pr['median'])}%).")
     elif hi >= pr["min"]:
         verdict = "below_overlapping"
-        text = (f"Your estimate ({est:.1f}%) is below the published output effects ({pr['min']:.1f}% to {pr['max']:.1f}%), "
-                f"but your range ({lo:.1f}% to {hi:.1f}%) reaches into them.")
+        text = (f"Your estimate ({p1(est)}%) is below the published output effects ({p1(pr['min'])}% to {p1(pr['max'])}%), "
+                f"but your range ({p1(lo)}% to {p1(hi)}%) reaches into them.")
     else:
         verdict = "below"
-        text = (f"Your estimate ({est:.1f}%, range {lo:.1f}% to {hi:.1f}%) is below every published output effect "
-                f"(lowest {pr['min']:.1f}%).")
+        text = (f"Your estimate ({p1(est)}%, range {p1(lo)}% to {p1(hi)}%) is below every published output effect "
+                f"(lowest {p1(pr['min'])}%).")
     if est <= 0:
         verdict = "none"
-        text = (f"Your estimate ({est:.1f}%) shows no gain. Published output studies mostly find gains, but METR's trial "
+        text = (f"Your estimate ({p1(est)}%) shows no gain. Published output studies mostly find gains, but METR's trial "
                 "found experienced developers slower, so a zero is possible.")
     context = [
         "Most published studies follow volunteers or early adopters; a company-wide estimate includes light users, "

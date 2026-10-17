@@ -19,7 +19,9 @@ data, and lets you question the results in plain English. Answers come from NVID
   where each AI dollar goes, whether output rose because of AI or for everyone (adopters against a control group over time),
   and the budget trade-off (net value against bill risk). Each has hover details and a table view.
 - **Checks itself against published research:** an Evidence tab compares the tool's estimate with nine studies, each linked
-  and marked with what was verified and what was left out ([docs/evidence.md](docs/evidence.md)). Context, not proof.
+  and marked with what was verified and what was left out ([docs/evidence.md](docs/evidence.md)). Context, not proof. It also puts the studies' metrics to work: the break-even effect this spend needs,
+  what-if returns if the effect matched each published study, the measured effect by experience level, and a check of
+  what employees say against what was measured.
 - **Explains every term:** a Glossary tab with plain definitions and worked examples that use the live numbers.
 - **Separates fact from opinion:** every number is labelled measured, estimated, assumed or judgement, and each decision is
   re-run in 180 assumption scenarios to show which hold and which depend on assumptions.

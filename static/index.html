@@ -156,6 +156,20 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
       <p id="evtext" style="margin:0 0 8px"></p><ul id="evctx" class="note" style="margin:0;padding-left:20px"></ul>
       <p class="note" id="evnote"></p></div>
     <div class="card chart" id="c-evidence"></div>
+    <div class="card" id="becard"><h2>What effect does this spend need to pay off?</h2>
+      <p id="betext" style="margin:0 0 10px"></p>
+      <div class="scroll"><table id="bescen"></table></div>
+      <details><summary>By department</summary><div class="scroll"><table id="bedept"></table></div></details>
+      <p class="note">Break-even effect = total monthly cost / dollars of value per 100% effect, if every user gained the same share of their baseline output (at your current realization). Published effects are for people who used AI, so each scenario applies one to the people counted as users. What-ifs, not forecasts.</p></div>
+    <div class="card" id="lvcard"><h2>Do less experienced people gain more?</h2>
+      <p id="lvtext" style="margin:0 0 10px"></p><div class="scroll"><table id="lvtab"></table></div>
+      <ul id="lvpub" class="note" style="padding-left:20px"></ul>
+      <p class="note">Published studies say they do. If your data agrees, that is a reason not to cap juniors below the department, and the tool already floors junior and intern caps at the department cap.</p></div>
+    <div class="card" id="pgcard"><h2>Do employees' own estimates match the measurement?</h2>
+      <div class="row"><div><label for="pgin">What do employees say AI adds to their output? (%)</label>
+        <input id="pgin" type="number" step="1" min="-100" max="500" placeholder="e.g. 20" style="width:140px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font:inherit"></div>
+        <button onclick="checkPerception()">Compare</button></div>
+      <p id="pgtext" style="margin:10px 0 0"></p><p id="pgnote" class="note"></p></div>
     <div class="card"><h2>The studies, with what was checked</h2><div id="evlist" class="gl"></div></div>
     <div class="card"><h2>Left out on purpose</h2><ul id="evleft" class="note" style="margin:0;padding-left:20px"></ul></div>
   </div>
@@ -203,6 +217,10 @@ const GL=[
   r=>`If extra output is worth $200 on paper and realization is 50%, we count <b>$100</b>.`],
  ['The return','Dollars back per $1 (ROI)','How much value comes back for each dollar spent. ROI = (value - cost) / cost, so $1.33 back per $1 is an ROI of 0.33. Below $1.00 back means it costs more than it returns.',
   r=>{const c=r.summary.company;return `A user costing $116 with $154 of value: ($154 - $116) / $116 = 0.33, so <b>$1.33 back per $1</b>. In this data the company is at <b>$${(1+c.roi).toFixed(2)} back per $1</b>.`}],
+ ['The return','Break-even effect','The size of AI effect on output that makes the spend pay for itself, at your current realization. If the measured effect is above it, AI pays off; if the range crosses it, the data cannot say.',
+  r=>{const b=window.EVIDENCE&&window.EVIDENCE.breakeven;return b&&b.company.breakeven!=null?`In this data: needs <b>${pp1(b.company.breakeven)}</b>, measured <b>${pp1(b.company.measured)}</b> (${b.company.verdict}).`:'Open the Evidence tab to load it.'}],
+ ['Trust and fairness','Perception gap','The difference between what people say AI does for them and what was measured. In METR\'s trial, developers believed they were 20% faster while the measurement showed 19% slower, so the tool measures output instead of asking.',
+  r=>`If employees say AI adds 20% and the measured effect is 7.1% (range 5.0% to 9.2%), the gap is <b>12.9 points</b>, above even the top of the range. Try it in the Evidence tab.`],
  ['The return','Net value','Value minus cost, in dollars. Use it to compare policies, because the ratio rises whenever you simply spend less.',
   r=>{const p=r.policies.find(x=>x.name==='Pay per use'),v=r.policies.find(x=>x.name==='Variable by role');return `A policy that spends $10 and returns $20 has a higher ratio (1.0) than one that spends $100 and returns $150 (0.5), but the second nets $50 vs $10. In this data: pay per use nets <b>${usd(p.net)}</b>, variable by role <b>${usd(v.net)}</b>.`}],
  ['The return','Break-even credit','The share of the estimated gain that must be real for a team to pay for itself. Low is good: a team that breaks even at 15% credit is safe even if we are too optimistic.',
@@ -274,7 +292,7 @@ function renderOverview(){if(!R)return;const r=R,c=r.summary.company,w=r.waste,d
   const pos=names(v=>v.confidence==='clear'&&v.roi>0), neg=names(v=>v.confidence==='clear'&&v.roi<0), unc=names(v=>v.confidence!=='clear');
   $('o2').textContent=back(c.roi)+' back per $1';
   $('o2s').textContent=(c.confidence==='clear'?'Supported by the data. ':`Not proven: it could be as low as ${back(c.roi_low)} or as high as ${back(c.roi_high)}. `)+
-    (pos.length?`Clearly positive in ${pos.join(', ')}. `:'')+(neg.length?`Clearly negative in ${neg.join(', ')}. `:'')+(unc.length?`Not enough evidence in ${unc.join(', ')}.`:'');
+    (pos.length?`Clearly positive in ${pos.join(', ')}. `:'')+(neg.length?`Clearly negative in ${neg.join(', ')}. `:'')+(unc.length?`Not enough evidence in ${unc.join(', ')}.`:'')+(window.EVIDENCE&&window.EVIDENCE.breakeven.company.breakeven!=null?` Break-even needs a ${(window.EVIDENCE.breakeven.company.breakeven*100).toFixed(1)}% output effect; the data shows ${(c.did_lift*100).toFixed(1)}%.`:'');
   const vbr=r.policies.find(p=>p.name==='Variable by role'), ppu=r.policies.find(p=>p.name==='Pay per use');
   const robust=ROB&&ROB.decisions.find(x=>x.id==='vbr_beats_status_quo').holds>=.95;
   $('o3').textContent='Variable by role';
@@ -345,6 +363,21 @@ function sumActs(){const ks=[...document.querySelectorAll('.ak:checked')];const 
 function dl(){const ids=[...document.querySelectorAll('.ak:checked')].map(k=>k.dataset.id).join(',');
   if(!ids){$('uerr').textContent='Tick at least one action first.';return}$('uerr').textContent='';location.href='/api/actions.csv?ids='+ids}
 async function load(){render(await j('/api/report'));loadRob();loadMath(mdept);loadEvidence()}
+
+const pp1=n=>(n*100).toFixed(1)+'%';
+function renderBench(g){const be=g.breakeven,c=be.company;if(c.breakeven==null){$('betext').textContent='No users yet, so there is no break-even effect.';return}
+  $('betext').textContent=`This spend needs AI to lift output by about ${pp1(c.breakeven)} to pay for itself. The tool measures ${pp1(c.measured)} (range ${pp1(c.low)} to ${pp1(c.high)}): ${c.verdict}. `+
+    (be.published_clear_it?`Every published study of output found more than that (${be.published.min.toFixed(1)}% to ${be.published.max.toFixed(1)}%), so if your rollout performs like those, it pays off. Studies of volunteers and early adopters are a best case, not a forecast.`:`Some published studies found less than that.`);
+  const tb=$('bescen');tb.replaceChildren();const hr=tb.insertRow();for(const h of ['If the effect on users were','Value per month','Net per month','Back per $1','Pays off?']){const th=document.createElement('th');th.textContent=h;if(h!=='If the effect on users were')th.className='n';hr.appendChild(th)}
+  for(const r of g.scenarios){const tr=tb.insertRow();if(r.key==='measured')tr.className='best';const vals=[r.label+' ('+(r.effect*100).toFixed(1)+'%)',usd(r.value),usd(r.net),'$'+r.back_per_dollar.toFixed(2),r.pays_off?'yes':'no'];vals.forEach((v,i)=>{const td=tr.insertCell();td.textContent=v;if(i)td.className='n'})}
+  const dt=$('bedept');dt.replaceChildren();const dh=dt.insertRow();for(const h of ['Department','Needs','Measured (range)','Verdict']){const th=document.createElement('th');th.textContent=h;dh.appendChild(th)}
+  for(const [k,v] of Object.entries(be.by_department)){const tr=dt.insertRow();[k,v.breakeven==null?'n/a':pp1(v.breakeven),pp1(v.measured)+' ('+pp1(v.low)+' to '+pp1(v.high)+')',v.verdict].forEach(x=>{tr.insertCell().textContent=x})}
+  const L=g.by_level;$('lvtext').textContent='In your data: '+L.verdict+'.'+(L.difference!=null?` Difference between less and more experienced: ${(L.difference*100).toFixed(1)} points.`:'');
+  const lt=$('lvtab');lt.replaceChildren();const lh=lt.insertRow();for(const h of ['Level','People using AI','AI effect (95% range)']){const th=document.createElement('th');th.textContent=h;lh.appendChild(th)}
+  for(const x of L.levels){const tr=lt.insertRow();[x.level,String(x.treated),x.effect==null?'too few people':pp1(x.effect)+' ('+pp1(x.low)+' to '+pp1(x.high)+')'].forEach(v=>{tr.insertCell().textContent=v})}
+  $('lvpub').replaceChildren(...L.published.map(p=>{const li=document.createElement('li');li.textContent=p.study+': '+p.text;return li}))}
+async function checkPerception(){const v=parseFloat($('pgin').value);if(isNaN(v)){$('pgtext').textContent='Enter a number first.';return}
+  try{const r=await j('/api/perception?pct='+encodeURIComponent(v));$('pgtext').textContent=r.text;$('pgnote').textContent=r.note}catch(e){$('pgtext').textContent=e.message}}
 async function loadEvidence(){try{const g=await j('/api/evidence');window.EVIDENCE=g;const c=g.comparison;
   $('evtext').textContent=c.text;$('evctx').replaceChildren(...c.context.map(t=>{const li=document.createElement('li');li.textContent=t;return li}));
   $('evnote').textContent='Numbers were read from the sources linked below on '+g.verified_on+'. Where a figure could not be confirmed from a primary source it is marked, or left out.';
@@ -356,7 +389,7 @@ async function loadEvidence(){try{const g=await j('/api/evidence');window.EVIDEN
     const dt=document.createElement('details');const sm=document.createElement('summary');sm.textContent='Caveats and what was verified';dt.appendChild(sm);
     const c1=document.createElement('p');c1.className='mute';c1.style.fontSize='12px';c1.textContent='Caveats: '+x.caveats;dt.appendChild(c1);
     const c2=document.createElement('p');c2.className='mute';c2.style.fontSize='12px';c2.textContent='Verified: '+x.verified;dt.appendChild(c2);d.appendChild(dt);return d}));
-  if(window.renderCharts)window.renderCharts()}catch(e){$('evtext').textContent='Could not load the evidence: '+e.message}}
+  renderBench(g);if(window.renderCharts)window.renderCharts();if(typeof renderOverview==='function')renderOverview()}catch(e){$('evtext').textContent='Could not load the evidence: '+e.message}}
 
 let mdept='';
 async function loadMath(d){try{const g=await j('/api/explain'+(d?('?department='+encodeURIComponent(d)):''));const e=g.department;mdept=e.department;

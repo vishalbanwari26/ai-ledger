@@ -38,3 +38,25 @@ does not change it.
 
 Open each link and read the abstract. The unit tests (`tests/test_ledger.py`, "published evidence") fail if a figure
 here drifts from the one recorded in the code.
+
+## Putting the studies' metrics to work
+
+Beyond the comparison chart, four figures from the studies are used on this company's own numbers (all in the
+Evidence tab; code in `ailedger/bench.py`, each with tests):
+
+- **Break-even effect.** The AI effect on output this spend needs in order to pay for itself: total monthly cost divided
+  by the dollars of value per 100% effect, at the current realization share. It is shown next to the measured effect and
+  its range, and next to the 12.2% to 26.1% found by the published output studies. Counting twice as much of the gain
+  (realization 100% instead of 50%) halves the effect you need.
+- **What-if scenarios.** The same company's return if the true effect on users matched each published output study (and
+  if there were no effect). Published effects are for people who used AI, so each is applied to the people the tool counts
+  as users. They are what-ifs, not forecasts.
+- **Do less experienced people gain more?** Brynjolfsson et al. (novices +34%, experienced minimal) and Cui et al. (less
+  experienced gained more) both say yes. The tool measures the effect by level with the same control-group method. The
+  demo company was built with the same lift at every level, so it correctly reports no clear difference; it does not
+  confirm the studies. On real data this is a test, and it bears on the junior cap: if juniors gain more, capping them
+  below the department would be counterproductive, which is why their caps are floored at the department cap.
+- **Perception gap.** METR's trial found developers expected a 24% speedup and afterwards believed they had been 20% faster,
+  while the measured result was 19% slower. Enter what employees say AI adds to their output and the tool shows the gap
+  against its measured effect and range. One study with early-2025 tools, but it is why this tool measures output
+  instead of asking.

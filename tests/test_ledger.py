@@ -555,3 +555,77 @@ def test_evidence_endpoint_matches_the_dashboard_estimate():
 
 def test_analyst_is_told_realization_does_not_change_the_output_effect():
     assert "before the realization share" in llm.SYSTEM and "get_evidence" in llm.SYSTEM
+
+
+# ---------------------------------------------------------------- benchmarks from the published studies
+
+def test_breakeven_effect_returns_exactly_the_cost():
+    from ailedger import bench
+    ds, a = data.generate(), an.Assumptions()
+    b = bench.breakeven(ds, a)["company"]
+    es, _ = an._analyze(ds, a)
+    value_at_breakeven = b["breakeven"] * bench._value_per_unit_effect(es, a)
+    assert abs(value_at_breakeven - b["cost"]) < b["cost"] * 0.002   # value equals cost, within the 4-decimal rounding of the effect
+    assert 0 < b["breakeven"] < 0.5
+
+
+def test_breakeven_scales_with_realization():
+    from ailedger import bench
+    ds = data.generate()
+    half = bench.breakeven(ds, an.Assumptions(realization=0.5))["company"]["breakeven"]
+    full = bench.breakeven(ds, an.Assumptions(realization=1.0))["company"]["breakeven"]
+    assert abs(half / full - 2.0) < 1e-3   # counting twice as much of the gain halves the effect you need
+
+
+def test_scenarios_are_ordered_and_use_only_output_studies():
+    from ailedger import bench, evidence as ev
+    rows = bench.scenarios(data.generate(), an.Assumptions())
+    effects = [r["effect"] for r in rows if r["key"] != "measured"]
+    assert effects == sorted(effects) and effects[0] == 0.0
+    assert rows[0]["pays_off"] is False and rows[-1]["pays_off"] is True
+    published = {r["effect"] for r in rows if r["key"] not in ("scenario", "measured")}
+    assert published == {x["value"] / 100 for x in ev.STUDIES if x["metric"] == "output"}  # no time-on-task numbers mixed in
+
+
+def test_effect_by_level_reports_no_difference_when_none_was_built_in():
+    from ailedger import bench
+    L = bench.by_level(data.generate(), an.Assumptions())
+    assert [x["level"] for x in L["levels"]] == ["intern", "junior", "mid", "senior"]
+    assert L["verdict"].startswith("no clear difference")  # the synthetic data gives every level the same lift
+    assert all(x["low"] <= x["effect"] <= x["high"] for x in L["levels"])
+
+
+def test_effect_by_level_detects_a_real_difference():
+    from ailedger import bench
+    ds = data.generate(seed=5)
+    for r in ds.rows:  # make juniors and interns gain an extra 20% after rollout, in a copy of the rows
+        if r["level"] in ("intern", "junior") and r["sessions"] >= 3 and r["month"] >= "2026-07":
+            r["outcome_units"] *= 1.20
+    L = bench.by_level(ds, an.Assumptions())
+    assert L["verdict"] == "less experienced people gain more" and L["difference"] > 0.1
+
+
+def test_perception_gap_verdicts():
+    from ailedger import bench
+    ds, a = data.generate(), an.Assumptions()
+    assert bench.perception(ds, a, 25.0)["verdict"] == "overstated"
+    assert bench.perception(ds, a, 7.0)["verdict"] == "consistent"
+    assert bench.perception(ds, a, 0.0)["verdict"] == "understated"
+    assert "19% slower" in bench.perception(ds, a, 7.0)["note"]
+
+
+def test_benchmark_endpoints():
+    c = TestClient(app)
+    g = c.get("/api/evidence").json()
+    assert {"breakeven", "scenarios", "by_level", "studies", "comparison"} <= set(g)
+    assert c.get("/api/perception?pct=20").json()["verdict"] == "overstated"
+    assert c.get("/api/perception?pct=9999").status_code == 422
+
+
+def test_rounding_matches_the_page():
+    from ailedger import evidence as ev
+    assert ev.p1(9.25) == "9.3" and ev.p1(5.04) == "5.0" and ev.p1(7.1) == "7.1"
+    ds, a = data.generate(), an.Assumptions()
+    from ailedger import bench
+    c = an.summary(ds, a)["company"]
+    assert f"{ev.p1(c['did_ci_high'] * 100)}%" in bench.perception(ds, a, 7.0)["text"]

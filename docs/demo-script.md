@@ -78,6 +78,8 @@ The video is tight. Rehearse it twice with a timer.
 - "The recommended budget is higher than what we spend now, so where is the saving?" The recommended number is a ceiling for one active person, not an average. The average cost per head under the plan is lower in every department. The saving comes from reassigning unused seats. The page shows the split.
 - "Everything is subjective." Some of it is. The page sorts numbers into measured, estimated, assumed and judgement, and re-runs each decision in 180 assumption sets. Two hold in all of them. For the rest it says it depends.
 - "Show me the calculation." The Show the math card walks each department through nine steps with its own numbers.
+- "What effect does this need to pay off?" About 6.4% in this company; we measure 7.1%, with a range that crosses it, so we say not proven. Published adopter studies found 12% to 26%, so if the rollout performs like those, it pays off.
+- "Do juniors gain more?" Two published studies say so. Our demo data was built flat, so it shows no difference; on real data it is a test, and it is why juniors are never capped below the department.
 - "Does published research agree?" The Evidence tab compares our estimate with nine studies, each linked and marked with what was checked. Our company-wide 7% sits below the 12% to 26% that studies of adopters found, which fits a rollout that includes light users. We never convert time-on-task results into output.
 - "Why no individual view?" Ranking people on AI use invites blame and is unreliable. The tool works on seats, groups and budgets.
 

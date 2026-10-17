@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from openai import OpenAI
 
 from . import analysis as an
+from . import bench
 from . import evidence as ev
 from .data import Dataset
 
@@ -63,6 +64,9 @@ Rules:
   between those measures, and say the comparison is context, not proof.
 - The AI effect on output (for example 7.1%) is measured before the realization share. Realization only turns that effect
   into dollars. Never use it to explain a difference from published output effects.
+- The break-even effect is the AI effect on output the spend needs in order to pay for itself at the current realization
+  share. Quote it with the measured effect and its range. Scenarios apply a published effect to the people counted as users;
+  they are what-ifs, not forecasts.
 - Be direct. Lead with the answer, then the two or three numbers that support it. No filler."""
 
 TOOLS = [
@@ -83,8 +87,9 @@ TOOLS = [
         "unused seats and caps, per department, plus what hard per-person caps would save and cost in output.",
         "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {
-        "name": "get_evidence", "description": "Published studies on AI and productivity (with sources, designs, effect sizes, "
-        "what was verified), and how this tool's company-wide estimate compares with the published output effects.",
+        "name": "get_evidence", "description": "Published studies on AI and productivity (with sources, designs, effect sizes, what was verified), how this tool's "
+        "company-wide estimate compares with them, the break-even effect this spend needs, what-if scenarios using each published "
+        "output effect, and the measured effect by experience level.",
         "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {
         "name": "get_actions", "description": "Proposed changes (reclaim seats, cap token spend) per department and level, "
@@ -164,7 +169,7 @@ class Analyst:
         if name == "get_plan_savings":
             return an.plan_savings(ds, a)
         if name == "get_evidence":
-            return ev.payload(an.summary(ds, a)["company"])
+            return bench.bundle(ds, a)
         if name == "get_actions":
             return an.actions(ds, a)
         if name == "get_routing":

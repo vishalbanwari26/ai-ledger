@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from . import analysis as an
 from . import data
+from . import bench
 from . import evidence as ev
 from .llm import Analyst
 
@@ -80,7 +81,15 @@ def report(request: Request, response: Response):
 @app.get("/api/evidence")
 def evidence(request: Request, response: Response):
     st = get_state(request, response)
-    return ev.payload(an.summary(st.ds, st.assumptions)["company"])
+    return bench.bundle(st.ds, st.assumptions)
+
+
+@app.get("/api/perception")
+def perception(request: Request, response: Response, pct: float):
+    st = get_state(request, response)
+    if not (-100 <= pct <= 500):
+        raise HTTPException(422, "percentage out of range")
+    return bench.perception(st.ds, st.assumptions, pct)
 
 
 @app.get("/api/robustness")
