@@ -139,7 +139,25 @@ def perception(ds: Dataset, a: an.Assumptions, self_reported_pct: float) -> dict
                      "measures output instead of relying on what people report.")
 
 
+def speed_effects(ds: Dataset, a: an.Assumptions) -> dict:
+    """For departments measured by speed: the change in time per task (negative = faster), comparable with the time studies.
+    A rate gain g means time falls to 1 / (1 + g), so the time change is 1 / (1 + g) - 1."""
+    es, stats = an._analyze(ds, a)
+    rows, lo_w, hi_w, est_w, n_tot = {}, 0.0, 0.0, 0.0, 0
+    for d, s in stats.items():
+        sp = an.dept_speed(a, d)
+        if not sp:
+            continue
+        t = lambda g: 1 / (1 + g) - 1  # noqa: E731
+        n = s["treated_n"]
+        rows[d] = dict(metric=sp[0], effect=round(t(s["did_lift"]), 4), low=round(t(s["ci_high"]), 4), high=round(t(s["ci_low"]), 4), users=n)
+        est_w += t(s["did_lift"]) * n; lo_w += t(s["ci_high"]) * n; hi_w += t(s["ci_low"]) * n; n_tot += n
+    if not rows:
+        return dict(departments={}, combined=None)
+    return dict(departments=rows, combined=dict(effect=round(est_w / n_tot, 4), low=round(lo_w / n_tot, 4), high=round(hi_w / n_tot, 4), users=n_tot))
+
+
 def bundle(ds: Dataset, a: an.Assumptions) -> dict:
     """Everything the Evidence tab and the analyst need, in one object."""
     company = an.summary(ds, a)["company"]
-    return ev.payload(company) | dict(breakeven=breakeven(ds, a), scenarios=scenarios(ds, a), by_level=by_level(ds, a))
+    return ev.payload(company) | dict(breakeven=breakeven(ds, a), scenarios=scenarios(ds, a), by_level=by_level(ds, a), speed=speed_effects(ds, a))

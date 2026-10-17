@@ -21,6 +21,7 @@ steady rate. Adopters who improve for reasons that start at rollout cannot be to
 from __future__ import annotations
 
 import json
+import re
 import statistics as st
 from dataclasses import dataclass, field
 
@@ -78,6 +79,8 @@ class Employee:
     growth: float | None = None  # output growth vs own baseline
     base: float = 0.0            # baseline output per month (own first months, or implied)
     unit_value: float = 0.0      # dollars one unit of output is worth (your definition, or hours x rate)
+    speed_pre: float = 0.0       # minutes per task before rollout (speed mode only)
+    speed_win: float = 0.0       # minutes per task in the measured months (speed mode only)
     benefit: float = 0.0         # extra dollars a month per active user, if you defined one
     lift: float = 0.0            # estimated AI effect (shrunk DiD), as a fraction of baseline output
     value: float = 0.0           # avg monthly dollar value after realization
@@ -101,6 +104,7 @@ def _akey(a: "Assumptions") -> tuple:
 
 
 VALUE_MODES = ("time", "unit")
+SPEED_UNITS = {"minutes": 1.0, "hours": 60.0, "days of 8 hours": 480.0}  # what the speed column is measured in
 VALUE_LIMITS = dict(value_per_unit=(0.0, 1_000_000.0), hours_per_unit=(0.0, 1000.0), hourly_rate=(0.0, 10_000.0),
                     benefit_per_user=(0.0, 100_000.0))
 
@@ -122,6 +126,17 @@ def value_def(a: "Assumptions", dept: str) -> dict:
 
 
 MAIN_METRIC = "units"  # the required outcome_units column; extra outcome_<name> columns are the other metrics
+
+
+def dept_speed(a: "Assumptions", dept: str) -> tuple[str, float] | None:
+    """(metric, minutes per unit of it) if this department measures the AI effect on time per task, else None."""
+    vd = value_def(a, dept)
+    key = vd.get("speed_metric")
+    return (key, float(vd.get("speed_unit_minutes", 1.0))) if key else None
+
+
+def looks_like_duration(key: str) -> bool:
+    return bool(re.search(r"(minutes|hours|days|seconds|time|duration|cycle|lead)", key, re.I))
 
 
 def dept_weights(a: "Assumptions", dept: str) -> dict | None:
@@ -190,6 +205,25 @@ def validate_value_defs(raw: object, departments: list[str], metrics: dict[str, 
                     raise ValueError("The unit name may contain letters, digits, spaces and . , ( ) & / + - : % # ' only, up to 60 characters.")
                 if name:
                     out[k] = name
+            elif k == "speed_metric":
+                if key == "*":
+                    raise ValueError("Choose the speed metric per department: each has its own columns.")
+                if v in (None, ""):
+                    continue
+                if v not in (metrics or {}).get(key, []) or v == MAIN_METRIC:
+                    raise ValueError(f"{key} has no extra metric called {v}. Available: {', '.join(m for m in (metrics or {}).get(key, []) if m != MAIN_METRIC) or 'none'}.")
+                if not looks_like_duration(v):
+                    raise ValueError(f"{v} does not look like a time per task. Name the column for what it is, for example outcome_task_minutes, "
+                                     "or leave this department measured on volume.")
+                out[k] = v
+            elif k == "speed_unit_minutes":
+                try:
+                    num = float(v)
+                except (TypeError, ValueError):
+                    raise ValueError("The unit of the speed metric must be minutes, hours or days.")
+                if num not in SPEED_UNITS.values():
+                    raise ValueError("The unit of the speed metric must be minutes, hours or days of 8 hours.")
+                out[k] = num
             elif k == "outcome_weights":
                 if not isinstance(v, dict) or not v:
                     raise ValueError(f"outcome_weights for {key} must be an object like {{\"units\": 1, \"reviews\": 0.3}}.")
@@ -222,6 +256,13 @@ def validate_value_defs(raw: object, departments: list[str], metrics: dict[str, 
             else:
                 raise ValueError(f"Unknown field: {k}")
         wts = out.get("outcome_weights")
+        if out.get("speed_metric") and wts and out["speed_metric"] in wts:
+            raise ValueError(f"{out['speed_metric']} is the time per task for {key}, so it cannot also be weighted as output.")
+        for wk in (wts or {}):
+            if wk != MAIN_METRIC and looks_like_duration(wk) and wts[wk] > 0:
+                raise ValueError(f"{wk} looks like a time per task. Use it as the speed metric for {key} instead of weighting it as output.")
+        if out.get("speed_metric") and "speed_unit_minutes" not in out:
+            out["speed_unit_minutes"] = 1.0
         if wts and {kk: vv for kk, vv in wts.items() if vv > 0} != {MAIN_METRIC: 1.0} and out.get("mode") != "unit" and "hours_per_unit" not in out \
                 and "hours_per_unit" not in (clean.get("*", {}) if key != "*" else {}):
             raise ValueError(f"A weighted mix of metrics is a new unit, so say what one is worth for {key}: dollars per unit, or hours per unit.")
@@ -249,6 +290,7 @@ def _analyze(ds: Dataset, a: Assumptions) -> tuple[list[Employee], dict]:
         by_emp.setdefault(r["employee_id"], []).append(r)
 
     dept_w = {d: dept_weights(a, d) for d in {r["department"] for r in ds.rows}}
+    dept_sp = {d: dept_speed(a, d) for d in {r["department"] for r in ds.rows}}
     es: list[Employee] = []
     units_pre: dict[str, float] = {}
     units_win: dict[str, float] = {}
@@ -271,12 +313,28 @@ def _analyze(ds: Dataset, a: Assumptions) -> tuple[list[Employee], dict]:
         um = {r["month"]: row_units(r, wts) for r in rs}
         if len(pre_m) >= 2 and um.get(pre_m[0], 0) > 0 and pre_m[1] in um:
             g01[eid] = um[pre_m[1]] / um[pre_m[0]] - 1
-        if pre:
+        sp = dept_sp.get(e.department)
+        hpu_speed = None
+        if sp:  # speed mode: the effect is the fall in time per task; volume is only the base it is applied to
+            skey, umin = sp
+            mins = {r["month"]: r["extras"][skey] for r in rs if r.get("extras", {}).get(skey, 0) > 0}
+            g01.pop(eid, None)
+            if len(pre_m) >= 2 and pre_m[0] in mins and pre_m[1] in mins:
+                g01[eid] = mins[pre_m[0]] / mins[pre_m[1]] - 1
+            pv, wv = [mins[m] for m in pre_m if m in mins], [mins[m] for m in win_m if m in mins]
+            if pre:
+                units_pre[eid] = st.mean(row_units(r, wts) for r in pre)
+            if pv and wv and units_pre.get(eid, 0) > 0:
+                m_pre, m_win = st.mean(pv), st.median(wv)
+                e.own_baseline, e.growth = True, m_pre / m_win - 1
+                e.speed_pre, e.speed_win = m_pre * umin, m_win * umin
+                hpu_speed = m_pre * umin / 60
+        elif pre:
             units_pre[eid] = st.mean(row_units(r, wts) for r in pre)
             if units_pre[eid] > 0:
                 e.own_baseline = True
                 e.growth = units_win[eid] / units_pre[eid] - 1
-        e.hpu = w[0]["hours_per_unit"]  # type: ignore[attr-defined]
+        e.hpu = hpu_speed if hpu_speed is not None else w[0]["hours_per_unit"]  # type: ignore[attr-defined]
         e.rate = w[0]["hourly_rate"]    # type: ignore[attr-defined]
         es.append(e)
 
@@ -952,7 +1010,9 @@ def value_info(ds: Dataset, a: Assumptions) -> dict:
         vd = value_def(a, d)
         out[d] = dict(
             unit=unit_label(ds, a, d), data_unit=data_unit_name(ds, d),
-            metrics=[dict(key=k, label=data_unit_name(ds, d) if k == MAIN_METRIC else k.replace("_", " ")) for k in mets.get(d, [MAIN_METRIC])],
+            metrics=[dict(key=k, label=data_unit_name(ds, d) if k == MAIN_METRIC else k.replace("_", " "), duration=k != MAIN_METRIC and looks_like_duration(k))
+                     for k in mets.get(d, [MAIN_METRIC])],
+            speed_metric=(dept_speed(a, d) or (None, 1.0))[0], speed_unit_minutes=(dept_speed(a, d) or (None, 1.0))[1],
             weights=value_def(a, d).get("outcome_weights") or {MAIN_METRIC: 1.0},
             composite=dept_weights(a, d) is not None,
             data_hours_per_unit=round(st.mean(e.hpu for e in g), 4), data_hourly_rate=round(st.mean(e.rate for e in g), 2),  # type: ignore[attr-defined]
@@ -961,7 +1021,7 @@ def value_info(ds: Dataset, a: Assumptions) -> dict:
             benefit_per_user=float(vd.get("benefit_per_user", 0.0)), mode=vd.get("mode", "time"),
             defined=d in raw, users=len(tr), value=round(sum(e.value for e in g), 2))
     return dict(departments=out, defs=value_defs(a), default=value_defs(a).get("*", {}),
-                custom=bool(value_defs(a)), limits=VALUE_LIMITS)
+                custom=bool(value_defs(a)), limits=VALUE_LIMITS, speed_units=SPEED_UNITS)
 
 
 _STEP_REFS = {'1. What it costs': ['seat_costs'], '2. Who is using AI': ['idle_sessions'], '3. How much did output grow?': ['windows'], '4. Remove what would have happened anyway': ['windows', 'pretrend'], '5. How sure are we?': ['z95'], '6. Shrink noisy individual estimates': [], '7. Turn the effect into dollars': ['realization', 'value_unit'], '8. ROI and break-even': ['realization'], '9. Recoverable spend in this department': ['seat_savings_realized', 'high_spend', 'peer_percentile', 'min_cohort']}
@@ -990,6 +1050,8 @@ def explain(ds: Dataset, a: Assumptions, dept: str | None = None) -> dict:
     vd = value_def(a, dept)
     custom = bool(vd)
     uname = unit_label(ds, a, dept)
+    spd = dept_speed(a, dept)
+    pre_min, win_min = (mean(lambda e: e.speed_pre), mean(lambda e: e.speed_win)) if spd else (0.0, 0.0)
     wts = dept_weights(a, dept)
     mix = ""
     if wts:
@@ -1009,8 +1071,11 @@ def explain(ds: Dataset, a: Assumptions, dept: str | None = None) -> dict:
              working=f"{k:,} people use it. {len(un):,} do not and become the comparison group.",
              result=f"{k:,} users, {len(un):,} unused seats"),
         dict(title="3. How much did output grow?",
-             formula="growth = output in the last months / own output in the first %d months - 1" % a.pre_months,
-             working=f"People using AI grew {_p(st_['naive_lift'])}. People not using it grew {_p(st_['control_raw'])}.",
+             formula=("speed gain = time per task in the first %d months / time per task in the latest months - 1" % a.pre_months) if spd
+                     else "growth = output in the last months / own output in the first %d months - 1" % a.pre_months,
+             working=(f"People using AI went from {pre_min:,.0f} to {win_min:,.0f} minutes per task: a speed gain of {_p(st_['naive_lift'])}. "
+                      f"People not using it gained {_p(st_['control_raw'])}.") if spd else
+                     f"People using AI grew {_p(st_['naive_lift'])}. People not using it grew {_p(st_['control_raw'])}.",
              result=f"{_p(st_['naive_lift'])} vs {_p(st_['control_raw'])}"),
         dict(title="4. Remove what would have happened anyway",
              formula="control growth to use = (1 + non-user growth) x (1 + pre-rollout gap per month)^months. "
@@ -1038,7 +1103,8 @@ def explain(ds: Dataset, a: Assumptions, dept: str | None = None) -> dict:
              working=(f"Typical user: {_p(a.realization, 0)} x {_p(lift)} x {base:,.1f} {uname} x ${uv:,.2f} per unit"
                       + (f" + ${benefit:,.0f}" if benefit else "")
                       + f" = {_m(a.realization * lift * base * uv + benefit)} a month. Summed over every user (each with their "
-                      f"own numbers): {_m(value)}. Idle seats are valued at 0." + mix),
+                      f"own numbers): {_m(value)}. Idle seats are valued at 0." + mix
+                      + (" Speed mode: the gain is applied to each person's baseline task volume and priced as freed-up hours at their hourly rate." if spd else "")),
              result=f"{_m(value)} a month (range {_m(roll['value_low'])} to {_m(roll['value_high'])})"),
         dict(title="8. ROI and break-even",
              formula="ROI = (value - cost) / cost.  Break-even credit = realization x cost / value",
@@ -1098,16 +1164,29 @@ def output_index(ds: Dataset, a: Assumptions) -> dict:
     months = sorted({r["month"] for r in ds.rows})
     pre_m = set(months[:a.pre_months])
     wts = {d: dept_weights(a, d) for d in {r["department"] for r in ds.rows}}
+    sp = {d: dept_speed(a, d) for d in wts}
+
+    def measure(r: dict) -> float | None:  # a row's output, or for a speed department its speed (tasks per minute)
+        s_ = sp[r["department"]]
+        if s_:
+            m = r.get("extras", {}).get(s_[0], 0)
+            return 1.0 / m if m > 0 else None
+        return row_units(r, wts[r["department"]])
+
     pre: dict[str, list[float]] = {}
     for r in ds.rows:
         if r["month"] in pre_m and r["employee_id"] in use:
-            pre.setdefault(r["employee_id"], []).append(row_units(r, wts[r["department"]]))
+            v = measure(r)
+            if v is not None:
+                pre.setdefault(r["employee_id"], []).append(v)
     base = {k: st.mean(v) for k, v in pre.items() if v and st.mean(v) > 0}
     acc: dict[bool, dict[str, list[float]]] = {True: {m: [] for m in months}, False: {m: [] for m in months}}
     for r in ds.rows:
         eid = r["employee_id"]
         if eid in base:
-            acc[use[eid]][r["month"]].append(row_units(r, wts[r["department"]]) / base[eid] * 100)
+            v = measure(r)
+            if v is not None:
+                acc[use[eid]][r["month"]].append(v / base[eid] * 100)
     f = lambda grp: [round(st.mean(acc[grp][m]), 2) if acc[grp][m] else None for m in months]  # noqa: E731
     return dict(months=months, users=f(True), non_users=f(False), pre_months=a.pre_months,
                 n_users=sum(1 for k in base if use[k]), n_non_users=sum(1 for k in base if not use[k]))

@@ -254,7 +254,7 @@
     const W = widthOf(plot), narrow = W < 480, gridC = C.grid, right = 56, rowH = 34;
     const name = x => narrow ? TINY[x.id] || x.short : x.short + (x.ci_derived ? '*' : '');
     const left = Math.min(Math.round(W * 0.42), Math.max(narrow ? 84 : 120, Math.max(...E.studies.map(x => name(x).length)) * (narrow ? 6.1 : 6.6) + 22));
-    const panel = (title, rows, lo, hi, tickStep, fmt, xlabel, zero, band) => {
+    const panel = (title, rows, lo, hi, tickStep, fmt, xlabel, zero, band, bandLabel) => {
       const top = band ? 46 : 34, bottom = 36, H = top + rowH * rows.length + bottom;
       const X = v => left + (v - lo) / (hi - lo) * (W - left - right);
       const s = svg(W, H);
@@ -267,7 +267,7 @@
       if (band) {
         s.appendChild(el('rect', { x: X(Math.max(lo, band.lo)), y: top - 6, width: Math.max(2, X(Math.min(hi, band.hi)) - X(Math.max(lo, band.lo))), height: H - bottom + 10 - (top - 6), fill: C.c1, 'fill-opacity': 0.14 }));
         s.appendChild(el('line', { x1: X(band.est), x2: X(band.est), y1: top - 6, y2: H - bottom + 4, stroke: C.c1, 'stroke-width': 2 }));
-        s.appendChild(el('text', { x: Math.min(X(band.est) + 5, W - 120), y: top - 12, fill: C.text, 'font-size': 11 }, 'Your estimate ' + band.est.toFixed(1) + '%'));
+        s.appendChild(el('text', { x: Math.min(X(band.est) + 5, W - 120), y: top - 12, fill: C.text, 'font-size': 11 }, (bandLabel || 'Your estimate') + ' ' + band.est.toFixed(1) + '%'));
       }
       if (zero) s.appendChild(el('line', { x1: X(0), x2: X(0), y1: top - 6, y2: H - bottom + 4, stroke: C.text, 'stroke-opacity': 0.6, 'stroke-width': 1.5 }));
       s.appendChild(el('text', { x: (left + W - right) / 2, y: H - 4, 'text-anchor': 'middle', fill: C.mute, 'font-size': 11 }, xlabel));
@@ -289,7 +289,8 @@
     };
     const fmtp = v => (v > 0 ? '+' : '') + v + '%';
     plot.appendChild(panel('More output (tasks, pull requests, issues per hour). Higher is better.', out, Math.min(0, Math.floor(Math.min(cmp.your_low, ...out.map(x => x.lo == null ? x.value : x.lo)) / 10) * 10), Math.ceil(Math.max(...out.map(x => x.hi == null ? x.value : x.hi), cmp.your_high) / 10) * 10 + 5, 10, fmtp, '% change in output', true, { est: cmp.your_effect, lo: cmp.your_low, hi: cmp.your_high }));
-    plot.appendChild(panel('Time to finish a task. Left is faster.', tim, -100, 30, 25, fmtp, '% change in time on the task', true, null));
+    const spd = E.speed && E.speed.combined;
+    plot.appendChild(panel('Time to finish a task. Left is faster.', tim, -100, 30, 25, fmtp, '% change in time on the task', true, spd ? { est: spd.effect * 100, lo: spd.low * 100, hi: spd.high * 100 } : null, 'Your speed-up'));
   }
 
   const REG = [['c-forest', forest], ['c-split', split], ['c-index', index], ['c-trade', tradeoff], ['c-evidence', evidence]];

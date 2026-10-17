@@ -76,3 +76,13 @@ The synthetic company (`ailedger/data.py`) uses the published findings as buildi
 - **What is not calibrated.** The company-wide effect is an outcome: it lands at 8.6% (range 6.4% to 10.9%), below the
   published range, because light users and heavy users with no gain dilute it and the window includes the adoption ramp.
   The Evidence tab says so. The mix of archetypes, prices and spend patterns are our own assumptions.
+
+## Time to finish a task as the output
+
+Three of the studies (Peng, Paradis, Becker) measure the time to finish a task, which is lower-is-better and says nothing about
+how many tasks there are. A department can choose to measure the AI effect by speed on the Your value tab. The effect is then
+baseline time divided by recent time, minus 1; it is applied to each person's baseline task volume and priced as freed-up hours
+at their hourly rate. The same control group, pre-rollout check and ranges apply. In time terms (a speed gain of g is a time
+change of 1 / (1 + g) - 1) the result is drawn on the time panel of the Evidence chart, next to those studies, instead of being
+compared with the output studies. The published time results measure one task, not a month of work, so the comparison is
+context only. Choosing speed instead of volume avoids counting the same gain twice.

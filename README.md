@@ -76,7 +76,7 @@ Open http://localhost:8077. The dashboard works without a key; the brief and Q&A
 
 Upload a CSV with one row per employee per month. Required columns: `employee_id, department, role, month, seat_cost,
 token_cost, tokens, sessions, outcome_units, hours_per_unit, hourly_rate`. Optional: `level` (intern, junior, mid,
-senior; default mid), `unit_name` (what one unit of `outcome_units` is called, e.g. "story points"), and any number of
+senior; default mid), a time-per-task column such as `outcome_task_minutes` (lower is better; choose it as the speed metric), `unit_name` (what one unit of `outcome_units` is called, e.g. "story points"), and any number of
 extra `outcome_<metric>` columns (e.g. `outcome_reviews`). Names use letters, digits, spaces and light punctuation only.
 On the Your value tab you can rename the unit and define output as a weighted mix of your metrics. You need at least 4 months, and the first 2 should be before AI rollout: they are each person's
 baseline. Join vendor billing (cost, tokens, sessions) with your work systems (outcome units) and HR data (role, rate).
@@ -101,6 +101,7 @@ Use a key created only for the demo and rotate it afterwards. Stop or delete the
 |---|---|---|
 | Your data | Upload CSV | Optional `level`, `unit_name` and extra `outcome_<metric>` columns |
 | What one unit of output is called, and how several metrics count towards output | Your value tab | A weighted mix is a new unit, so it must be priced |
+| Whether to measure the effect on volume or on speed (time to finish a task) | Your value tab | Speed needs a time column such as `outcome_task_minutes`; it is applied to baseline task volume and priced as freed-up hours |
 | What a unit of output is worth (hours x rate, or your dollars per unit) and an optional benefit per user | Your value tab | Per department, with a default for all |
 | Share of extra output counted as real, elasticity, cheaper model price, pay-per-use price | Sliders in "Data and assumptions" | |
 | When a seat is unused, what counts as high spend, the peer percentile for caps, the smallest peer group | Rules tab | Out-of-range values are refused |

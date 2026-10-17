@@ -43,6 +43,17 @@ Price lists and studies were read on 2026-10-18.
 - **Why:** Your CSV's outcome_units column is the output, named by its unit_name column. You can rename it, or define output as a weighted mix of extra outcome_<name> columns, on the Your value tab.
 - **Caveat:** In the demo company the unit names and extra metrics are invented.
 
+### Measuring the effect by speed (time per task)
+
+- **Value used:** off unless you choose a time column
+- **Origin:** Computed from your data
+- **Used in:** The AI effect, value and the comparison with the time-on-task studies
+- **Why:** Time per task is lower-is-better, so the effect is the speed gain (baseline time / recent time - 1), applied to each person's baseline task volume and priced as freed-up hours at their hourly rate.
+- **Caveat:** Choosing speed instead of volume avoids counting the same gain twice. The published time studies measure one task, not a month of work.
+- **Reference:** [Peng, Kalliamvakou, Cihon, Demirer (2023)](https://arxiv.org/abs/2302.06590), read 2026-10-18. Average 71.17 minutes with Copilot vs 160.89 without: 55.8% less time. 95% interval for the improvement: 21% to 89%. p = 0.0017.
+- **Reference:** [Paradis et al. (2024)](https://arxiv.org/abs/2410.12944), read 2026-10-18. AI significantly shortened the time on task. Best estimate about 21%, 'although our confidence interval is large'.
+- **Reference:** [Becker, Rush, Barnes, Rein (2025)](https://arxiv.org/abs/2507.09089), read 2026-10-18. Allowing AI increased completion time by 19%. Developers had predicted a 24% speedup and, afterwards, believed they had been 20% faster.
+
 ### Share of a reclaimed seat's cost actually saved
 
 - **Value used:** 80%

@@ -97,6 +97,11 @@ def _entries(a: an.Assumptions) -> list[dict]:
         "Your CSV's outcome_units column is the output, named by its unit_name column. You can rename it, or define output as a "
         "weighted mix of extra outcome_<name> columns, on the Your value tab.",
         caveat="In the demo company the unit names and extra metrics are invented.")
+    add("speed_metric", G1, "Measuring the effect by speed (time per task)", "off unless you choose a time column", "yours" if any(v.get("speed_metric") for v in an.value_defs(a).values() if isinstance(v, dict)) else "data",
+        "The AI effect, value and the comparison with the time-on-task studies",
+        "Time per task is lower-is-better, so the effect is the speed gain (baseline time / recent time - 1), applied to each person's baseline task volume and priced as freed-up hours at their hourly rate.",
+        ["study:peng-2023", "study:paradis-2024", "study:becker-2025"],
+        "Choosing speed instead of volume avoids counting the same gain twice. The published time studies measure one task, not a month of work.")
     add("seat_savings_realized", G1, "Share of a reclaimed seat's cost actually saved", _pct(d0.seat_savings_realized), "assumption",
         "Unused-seat savings, the plan's saving, the headline",
         "Contracts have minimums and notice periods, so not every cancelled dollar comes back.", ["claude-plans"],

@@ -850,7 +850,7 @@ def test_csv_carries_unit_names_and_extra_metrics():
     header = text.splitlines()[0].split(",")
     assert "unit_name" in header and "outcome_reviews" in header and "outcome_commits" in header
     back = data.load_csv(text)
-    assert back.rows[0]["unit_name"] == "PRs merged" and set(back.rows[0]["extras"]) == {"reviews", "commits"}
+    assert back.rows[0]["unit_name"] == "PRs merged" and set(back.rows[0]["extras"]) == {"reviews", "commits", "task_minutes"}
     assert len(back.rows) == len(ds.rows)
 
 
@@ -1054,3 +1054,101 @@ def test_analysis_cache_never_separates_its_entries():
         a = _replace(an.Assumptions(), high_spend_mult=1.1 + i / 20)
         assert an.selection(ds, a)["tested"] in (True, False)
         assert an.summary(ds, a)["company"]["headcount"] > 0
+
+
+# ---------------------------------------------------------------- time to finish a task as the output
+
+def _speed(**kw):
+    d = {"Engineering": {"speed_metric": "task_minutes"}, "Support": {"speed_metric": "handle_minutes"}}
+    d.update(kw)
+    return _with_defs(an.validate_value_defs(d, sorted(an.metrics_by_dept(data.generate(scale=0.05))), an.metrics_by_dept(data.generate(scale=0.05))))
+
+
+def test_demo_data_carries_minutes_per_task_that_fall_after_adoption():
+    ds = data.generate()
+    eng = [r for r in ds.rows if r["department"] == "Engineering"]
+    users = [r["extras"]["task_minutes"] for r in eng if r["month"] == "2026-09" and r["sessions"] >= 3]
+    pre = [r["extras"]["task_minutes"] for r in eng if r["month"] == "2026-05"]
+    assert sum(users) / len(users) < sum(pre) / len(pre) * 0.95        # faster after adoption
+    assert all(r["extras"]["task_minutes"] > 0 for r in eng)
+
+
+def test_speed_mode_measures_the_fall_in_time_per_task():
+    ds = data.generate()
+    a = _speed()
+    es, _ = an._analyze(ds, a)
+    users = [e for e in es if e.department == "Engineering" and e.treated and e.own_baseline]
+    assert users and all(e.speed_win > 0 and e.speed_pre > 0 for e in users)
+    mean = lambda xs: sum(xs) / len(xs)  # noqa: E731
+    assert mean([e.speed_win for e in users]) < mean([e.speed_pre for e in users])          # less time per task
+    d = an.summary(ds, a)["departments"]["Engineering"]
+    assert 0.05 < d["did_lift"] < 0.2 and d["ci_low"] < d["did_lift"] < d["ci_high"]       # a believable speed gain with a range
+    assert abs(mean([e.hpu for e in users]) - mean([e.speed_pre for e in users]) / 60) < 1e-6   # hours per task come from the minutes
+
+
+def test_speed_gain_and_time_change_are_consistent():
+    from ailedger import bench
+    ds = data.generate()
+    a = _speed()
+    sp = bench.speed_effects(ds, a)
+    assert set(sp["departments"]) == {"Engineering", "Support"}
+    d = an.summary(ds, a)["departments"]["Engineering"]
+    assert abs(sp["departments"]["Engineering"]["effect"] - (1 / (1 + d["did_lift"]) - 1)) < 1e-3   # 25% faster = 20% less time
+    c = sp["combined"]
+    assert c["effect"] < 0 and c["low"] < c["effect"] < c["high"] < 0
+    assert bench.speed_effects(ds, an.Assumptions()) == dict(departments={}, combined=None)       # nothing unless you choose speed
+
+
+def test_speed_mode_leaves_other_departments_to_volume():
+    ds = data.generate()
+    plain, sp = an.summary(ds, an.Assumptions())["departments"], an.summary(ds, _speed())["departments"]
+    for d in ("Legal", "Marketing"):                       # no speed metric chosen: still measured on volume
+        assert abs(plain[d]["did_lift"] - sp[d]["did_lift"]) < 0.02     # (small drift from the pooled pre-rollout check only)
+
+
+def test_speed_validation():
+    import pytest
+    ds = data.generate(scale=0.05)
+    mets, depts = an.metrics_by_dept(ds), sorted(an.metrics_by_dept(ds))
+    assert an.validate_value_defs({"Engineering": {"speed_metric": "task_minutes", "speed_unit_minutes": 60}}, depts, mets)["Engineering"]["speed_unit_minutes"] == 60.0
+    for bad in ({"Engineering": {"speed_metric": "nope"}}, {"Engineering": {"speed_metric": "units"}}, {"*": {"speed_metric": "task_minutes"}},
+                {"Engineering": {"speed_metric": "reviews"}},
+                {"Engineering": {"speed_metric": "task_minutes", "speed_unit_minutes": 7}},
+                {"Engineering": {"speed_metric": "task_minutes", "outcome_weights": {"units": 1, "task_minutes": 1}, "mode": "unit", "value_per_unit": 5}},
+                {"Engineering": {"outcome_weights": {"units": 1, "task_minutes": 0.5}, "mode": "unit", "value_per_unit": 5}}):
+        with pytest.raises(ValueError):
+            an.validate_value_defs(bad, depts, mets)
+
+
+def test_time_unit_scales_the_hours_per_task():
+    ds = data.generate()
+    es_min, _ = an._analyze(ds, _speed())
+    d = {"Engineering": {"speed_metric": "task_minutes", "speed_unit_minutes": 60.0}}
+    es_hr, _ = an._analyze(ds, _with_defs(d))
+    a = {e.employee_id: e.hpu for e in es_min if e.department == "Engineering" and e.treated and e.own_baseline}
+    b = {e.employee_id: e.hpu for e in es_hr if e.department == "Engineering" and e.treated and e.own_baseline}
+    assert all(abs(b[k] / a[k] - 60.0) < 1e-6 for k in a if k in b)       # same numbers read as hours instead of minutes
+
+
+def test_output_index_tracks_speed_and_explain_says_so():
+    ds = data.generate()
+    plain = an.output_index(ds, an.Assumptions())
+    fast = an.output_index(ds, _speed())
+    assert plain["users"] != fast["users"] and fast["users"][-1] > fast["users"][0]
+    text = an.explain(ds, _speed(), "Engineering")["steps"]
+    assert "minutes per task" in text[2]["working"] and "Speed mode" in text[6]["working"]
+
+
+def test_speed_in_the_api_and_the_evidence_bundle():
+    c = TestClient(app)
+    r = c.post("/api/value", json={"defs": {"Engineering": {"speed_metric": "task_minutes"}}}).json()
+    eng = r["value"]["departments"]["Engineering"]
+    assert eng["speed_metric"] == "task_minutes" and any(m["duration"] for m in eng["metrics"])
+    assert c.post("/api/value", json={"defs": {"Engineering": {"speed_metric": "reviews"}}}).status_code == 422   # a count is not a time
+    c.post("/api/value", json={"defs": {"Engineering": {"speed_metric": "task_minutes"}}})
+    ev_ = c.get("/api/evidence").json()
+    assert ev_["speed"]["combined"]["effect"] < 0 and "Engineering" in ev_["speed"]["departments"]
+    c.post("/api/value", json={"defs": {}})
+    assert c.get("/api/evidence").json()["speed"]["combined"] is None
+    page = c.get("/").text
+    assert "Measure the effect by" in page and "x.duration" in page

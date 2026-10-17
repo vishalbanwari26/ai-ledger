@@ -141,7 +141,8 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
     <div class="card"><h2>What counts as one unit of output?</h2>
       <p style="margin:0 0 8px">Name the unit your team really produces, and if you track several things, say how much each counts. For example, one pull request = 1, one code review = 0.3, one commit = 0.1. The tool then measures the AI effect on that mix.</p>
       <div class="scroll"><table id="utab"></table></div>
-      <p class="note">Your CSV supplies the metrics: the required <code>outcome_units</code> column, plus any extra <code>outcome_&lt;name&gt;</code> columns. A weighted mix is a new unit, so also set what one is worth in the table above (dollars per unit, or hours per unit). Blank weights mean 1 for the main metric and 0 for the others.</p></div>
+      <p class="note">Your CSV supplies the metrics: the required <code>outcome_units</code> column, plus any extra <code>outcome_&lt;name&gt;</code> columns. A weighted mix is a new unit, so also set what one is worth in the table above (dollars per unit, or hours per unit). Blank weights mean 1 for the main metric and 0 for the others.</p>
+      <p class="note"><b>Speed.</b> If you track the time to finish a task (lower is better), choose it under "Measure the effect by". The AI effect is then the fall in time per task, applied to each person's baseline task volume and priced as freed-up hours at their hourly rate. Do not weight a time column as output.</p></div>
     <div class="card" id="vdelta" hidden><h2>What your definition changed</h2><div id="vdtext"></div></div>
     <details class="card"><summary>Advanced: the definition as JSON</summary>
       <textarea id="vjson" rows="8" spellcheck="false" style="font-family:ui-monospace,Menlo,monospace;font-size:12px;margin-top:8px"></textarea>
@@ -193,7 +194,7 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
   </div>
   <div class="tab" id="tab-evidence" hidden>
     <div class="card"><h2>Does the published research support these numbers?</h2>
-      <p id="evtext" style="margin:0 0 8px"></p><ul id="evctx" class="note" style="margin:0;padding-left:20px"></ul>
+      <p id="evtext" style="margin:0 0 8px"></p><p id="evspeed" style="margin:0 0 8px"></p><ul id="evctx" class="note" style="margin:0;padding-left:20px"></ul>
       <p class="note" id="evnote"></p>
       <p class="note" style="margin:4px 0 0">Published range used<sup class="ref" data-ref="published_range" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup>; perception gap<sup class="ref" data-ref="metr_perception" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup>; calibration of the demo company<sup class="ref" data-ref="archetype_lifts" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup><sup class="ref" data-ref="level_lift" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup>.</p></div>
     <div class="card chart" id="c-evidence"></div>
@@ -310,6 +311,8 @@ const GL=[
   r=>{const v=r.value;return v&&v.custom?`In this analysis you have defined it for: <b>${Object.keys(v.defs).map(k=>k==='*'?'all departments':k).join(', ')}</b>.`:'Nothing is customized: every department uses the hours and rates in the data. Change it on the Your value tab.'}],
  ['Trust and fairness','Source of a value','Each number is labelled by origin: published study, price list, standard convention, our method choice, our rule of thumb, our assumption with no source, invented for the demo, defined by you, or computed from your data. The label tells you how much weight to give it.',
   r=>`An assumption with no source, such as counting 50% of extra output as real, is a placeholder: change it and see what moves. Click any ⓘ, or open the Sources tab.`],
+ ['The return','Speed (time per task)','Output can be measured as how fast a task gets done instead of how many get done. Time per task is lower-is-better, so the effect is baseline time divided by recent time, minus 1. The gain is then applied to each person\'s baseline task volume and priced as freed-up hours at their hourly rate.',
+  r=>`If a task fell from 100 to 80 minutes, the speed gain is 100 / 80 - 1 = <b>25%</b>, which is <b>20% less</b> time. Someone who did 20 such tasks a month at 80 minutes frees about 20 x 20 min = 6.7 hours.`],
  ['The return','Net value','Value minus cost, in dollars. Use it to compare policies, because the ratio rises whenever you simply spend less.',
   r=>{const p=r.policies.find(x=>x.name==='Pay per use'),v=r.policies.find(x=>x.name==='Variable by role');return `A policy that spends $10 and returns $20 has a higher ratio (1.0) than one that spends $100 and returns $150 (0.5), but the second nets $50 vs $10. In this data: pay per use nets <b>${usd(p.net)}</b>, variable by role <b>${usd(v.net)}</b>.`}],
  ['The return','Break-even credit','The share of the estimated gain that must be real for a team to pay for itself. Low is good: a team that breaks even at 15% credit is safe even if we are too optimistic.',
@@ -486,14 +489,21 @@ function vrow(key,label,unit,info,def){const tr=document.createElement('tr');tr.
 
 function urow(d,info,def){const tr=document.createElement('tr');tr.dataset.key=d;
   const a=document.createElement('td');a.textContent=d;tr.appendChild(a);
-  const n=document.createElement('td');const ni=document.createElement('input');ni.className='vin';ni.dataset.f='unit_name';ni.placeholder=info.data_unit;ni.maxLength=60;ni.value=def.unit_name||'';ni.style.maxWidth='280px';ni.style.width='260px';n.appendChild(ni);tr.appendChild(n);
-  const m=document.createElement('td');const w=def.outcome_weights||{};
-  if(info.metrics.length<2){m.className='mute';m.textContent='Your data has one outcome column for this department.'}
-  else info.metrics.forEach(x=>{const sp=document.createElement('span');sp.style.cssText='display:inline-flex;align-items:center;gap:4px;margin:2px 12px 2px 0';
+  const n=document.createElement('td');const ni=document.createElement('input');ni.className='vin';ni.dataset.f='unit_name';ni.placeholder=info.data_unit;ni.maxLength=60;ni.value=def.unit_name||'';ni.style.maxWidth='280px';ni.style.width='220px';n.appendChild(ni);tr.appendChild(n);
+  const m=document.createElement('td');const w=def.outcome_weights||{};const counts=info.metrics.filter(x=>!x.duration);
+  if(counts.length<2){m.className='mute';m.textContent='One outcome column.'}
+  else counts.forEach(x=>{const sp=document.createElement('span');sp.style.cssText='display:inline-flex;align-items:center;gap:4px;margin:2px 12px 2px 0';
     const i=document.createElement('input');i.type='number';i.step='any';i.min='0';i.className='vin num';i.dataset.metric=x.key;i.placeholder=x.key==='units'?'1':'0';if(w[x.key]!=null)i.value=w[x.key];i.style.width='72px';sp.appendChild(i);
     const l=document.createElement('span');l.className='mute';l.textContent='x '+x.label;sp.appendChild(l);m.appendChild(sp)});
-  tr.appendChild(m);return tr}
-function renderUnits(V){const t=$('utab');if(!t)return;t.replaceChildren();const h=t.insertRow();['Department','Name of one unit','Count each metric as (weight)'].forEach(x=>{const th=document.createElement('th');th.textContent=x;h.appendChild(th)});
+  tr.appendChild(m);
+  const sd=document.createElement('td');const times=info.metrics.filter(x=>x.duration);
+  if(!times.length){sd.className='mute';sd.textContent='Volume. (No time column found: name one like outcome_task_minutes to measure speed.)'}
+  else{const sel=document.createElement('select');sel.className='vin';sel.dataset.f='speed_metric';const o0=document.createElement('option');o0.value='';o0.textContent='Volume (the metrics above)';sel.appendChild(o0);
+    times.forEach(x=>{const o=document.createElement('option');o.value=x.key;o.textContent='Speed: '+x.label;if(info.speed_metric===x.key)o.selected=true;sel.appendChild(o)});
+    const us=document.createElement('select');us.className='vin';us.dataset.f='speed_unit_minutes';us.style.marginLeft='6px';Object.entries(R.value.speed_units).forEach(([k,v])=>{const o=document.createElement('option');o.value=v;o.textContent='in '+k;if(Number(info.speed_unit_minutes)===v)o.selected=true;us.appendChild(o)});
+    const sync=()=>{us.hidden=!sel.value};sel.onchange=sync;sync();sd.appendChild(sel);sd.appendChild(us)}
+  tr.appendChild(sd);return tr}
+function renderUnits(V){const t=$('utab');if(!t)return;t.replaceChildren();const h=t.insertRow();['Department','Name of one unit','Count each metric as (weight)','Measure the effect by'].forEach(x=>{const th=document.createElement('th');th.textContent=x;h.appendChild(th)});
   for(const [d,info] of Object.entries(V.departments))t.appendChild(urow(d,info,V.defs[d]||{}))}
 function renderValue(r){const V=r.value;if(!V)return;const t=$('vtab');t.replaceChildren();const h=t.insertRow();
   ['Department','Output unit','Method','Hours per unit','Hourly rate','Dollars per unit','Extra benefit per user / month','In effect now'].forEach((x,i)=>{const th=document.createElement('th');th.textContent=x;if(i===7)th.className='n';h.appendChild(th)});
@@ -508,7 +518,7 @@ function collectValue(){const defs={};document.querySelectorAll('#vtab tr[data-k
   const meaningful=Object.keys(d).some(k=>k!=='mode')||d.mode==='unit';if(meaningful)defs[tr.dataset.key]=d});
   document.querySelectorAll('#utab tr[data-key]').forEach(tr=>{const k=tr.dataset.key,info=R.value.departments[k];const nm=tr.querySelector('[data-f=unit_name]').value.trim();
     const ws=[...tr.querySelectorAll('[data-metric]')];const w={};let any=false;ws.forEach(i=>{if(i.value!=='')any=true;w[i.dataset.metric]=i.value===''?(i.dataset.metric==='units'?1:0):parseFloat(i.value)});
-    const d=defs[k]||{};if(nm&&nm!==info.data_unit)d.unit_name=nm;if(any){const isDefault=Object.entries(w).every(([m,v])=>v===(m==='units'?1:0));if(!isDefault)d.outcome_weights=w}
+    const d=defs[k]||{};if(nm&&nm!==info.data_unit)d.unit_name=nm;const spm=tr.querySelector('[data-f=speed_metric]');if(spm&&spm.value){d.speed_metric=spm.value;d.speed_unit_minutes=parseFloat(tr.querySelector('[data-f=speed_unit_minutes]').value)}if(any){const isDefault=Object.entries(w).every(([m,v])=>v===(m==='units'?1:0));if(!isDefault)d.outcome_weights=w}
     if(Object.keys(d).length)defs[k]=d});return defs}
 async function sendValue(defs){$('verr').textContent='';$('vmsg').textContent='';const before=R?{v:R.summary.company.monthly_value,roi:R.summary.company.roi,net:R.summary.company.net}:null;
   try{const rep=await j('/api/value',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({defs})});render(rep);loadRob();loadMath(mdept);loadEvidence();
@@ -544,7 +554,7 @@ function applyRules(){const c=collectRules();const d=RULES_INFO?Object.fromEntri
   const routine={};for(const [k,v] of Object.entries(c.routine))if(Math.abs(v-(d[k]??v))>1e-9)routine[k]=v;sendRules({values:c.values,routine})}
 function resetRules(){sendRules({reset:true})}
 async function loadEvidence(){try{const g=await j('/api/evidence');window.EVIDENCE=g;const c=g.comparison;
-  $('evtext').textContent=c.text;$('evctx').replaceChildren(...c.context.map(t=>{const li=document.createElement('li');li.textContent=t;return li}));
+  $('evtext').textContent=c.text;const sp=g.speed&&g.speed.combined;$('evspeed').textContent=sp?`Measured as time per task (${Object.keys(g.speed.departments).join(' and ')}): ${(Math.abs(sp.effect)*100).toFixed(1)}% ${sp.effect<0?'less':'more'} time per task for people using AI (range ${(Math.min(Math.abs(sp.low),Math.abs(sp.high))*100).toFixed(1)}% to ${(Math.max(Math.abs(sp.low),Math.abs(sp.high))*100).toFixed(1)}%). That is the figure to set against the time-on-task studies below: Peng, 55.8% less time on one task; Google, about 21% less; METR, 19% more.`:'';$('evctx').replaceChildren(...c.context.map(t=>{const li=document.createElement('li');li.textContent=t;return li}));
   $('evnote').textContent='Numbers were read from the sources linked below on '+g.verified_on+'. Where a figure could not be confirmed from a primary source it is marked, or left out.';
   $('evleft').replaceChildren(...g.left_out.map(t=>{const li=document.createElement('li');li.textContent=t;return li}));
   $('evlist').replaceChildren(...g.studies.map(x=>{const d=document.createElement('div');d.className='card gt';

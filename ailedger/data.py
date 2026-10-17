@@ -78,6 +78,9 @@ EXTRA_METRICS = {
     "Finance": [("reconciliations", 3.0, 0.6), ("forecast_updates", 1.2, 0.5)],
     "Legal": [("clauses_checked", 8.0, 0.7), ("matters_opened", 0.6, 0.4)],
 }
+# Time per task, in minutes (lower is better), for two departments. Demo data. (metric, AI speedup per unit of lift, background
+# speedup a month for everyone). The tool can measure the AI effect on this instead of on volume.
+DURATION_METRICS = {"Engineering": ("task_minutes", 0.9, 0.006), "Support": ("handle_minutes", 0.8, 0.004)}
 TEXT_OK = re.compile(r"^[\w &/().,+'\-:%#]{0,60}$")  # letters, digits, spaces and light punctuation; no markup characters
 TOKEN_PRICE_PER_M = 5.0  # blended $/1M tokens across fast and frontier models, after caching
 MONTHS = ["2026-05", "2026-06", "2026-07", "2026-08", "2026-09"]
@@ -145,6 +148,7 @@ def generate(seed: int = 7, messy: bool = True, noise: float = 0.07, trend: floa
             lv = LEVELS[level]
             personal_base = base * lv["units"] * rng.uniform(0.8, 1.2)
             adopt_at = rng.choice([2, 3])  # staggered rollout: months 0-1 are clean for everyone
+            base_minutes = hpu * 60 * rng_x.uniform(0.85, 1.15)  # this person's usual minutes per task
             part_time = messy and rng.random() < 0.08
             new_hire = messy and rng.random() < 0.05
             leave_month = rng.choice([3, 4]) if messy and rng.random() < 0.05 else None
@@ -185,6 +189,9 @@ def generate(seed: int = 7, messy: bool = True, noise: float = 0.07, trend: floa
                     core = units_main / (1 + lift)
                     row["extras"] = {k: round(core * f * (1 + lift * share) * mod * rng_x.uniform(0.9, 1.1), 2)
                                      for k, f, share in EXTRA_METRICS[dept]}
+                    if dept in DURATION_METRICS:
+                        dk, sp, bg = DURATION_METRICS[dept]
+                        row["extras"][dk] = round(base_minutes * (1 - bg) ** i / (1 + lift * sp) * rng_x.uniform(0.93, 1.07), 2)
                 rows.append(row)
             truth[eid]["lift_window"] = sum(win_lifts) / len(win_lifts) if win_lifts else 0.0
     return Dataset(rows, truth)
