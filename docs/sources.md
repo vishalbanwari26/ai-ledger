@@ -35,6 +35,14 @@ Price lists and studies were read on 2026-10-18.
 - **Why:** By default each department's own hours per unit and hourly rate from your data. Replace it with a dollar value per unit, or add a benefit per user, on the Your value tab.
 - **Caveat:** In the demo company these rates and hours are invented (see demo-data entries).
 
+### What counts as one unit of output
+
+- **Value used:** the main outcome column, named by your data
+- **Origin:** Computed from your data
+- **Used in:** The AI effect on output, value per unit, every dollar figure
+- **Why:** Your CSV's outcome_units column is the output, named by its unit_name column. You can rename it, or define output as a weighted mix of extra outcome_<name> columns, on the Your value tab.
+- **Caveat:** In the demo company the unit names and extra metrics are invented.
+
 ### Share of a reclaimed seat's cost actually saved
 
 - **Value used:** 80%

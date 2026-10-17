@@ -138,6 +138,10 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
       <div class="row" style="margin-top:12px"><button onclick="applyValue()">Apply</button><button class="ghost" onclick="resetValue()">Back to the data's figures</button><span id="vmsg" class="mute"></span></div>
       <div id="verr" class="err"></div>
       <p class="note">Blank fields use the data's own figures (shown in gray). "All departments" fills in for any department you leave alone. An extra benefit per user is for value that is not extra output, such as retention or quality; it is counted in full and is not reduced by the realization share.</p></div>
+    <div class="card"><h2>What counts as one unit of output?</h2>
+      <p style="margin:0 0 8px">Name the unit your team really produces, and if you track several things, say how much each counts. For example, one pull request = 1, one code review = 0.3, one commit = 0.1. The tool then measures the AI effect on that mix.</p>
+      <div class="scroll"><table id="utab"></table></div>
+      <p class="note">Your CSV supplies the metrics: the required <code>outcome_units</code> column, plus any extra <code>outcome_&lt;name&gt;</code> columns. A weighted mix is a new unit, so also set what one is worth in the table above (dollars per unit, or hours per unit). Blank weights mean 1 for the main metric and 0 for the others.</p></div>
     <div class="card" id="vdelta" hidden><h2>What your definition changed</h2><div id="vdtext"></div></div>
     <details class="card"><summary>Advanced: the definition as JSON</summary>
       <textarea id="vjson" rows="8" spellcheck="false" style="font-family:ui-monospace,Menlo,monospace;font-size:12px;margin-top:8px"></textarea>
@@ -231,6 +235,7 @@ const roiRange=v=>`${x(v.roi)} <span class="mute">(${x(v.roi_low)} to ${x(v.roi_
 let R;
 
 
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const refName=id=>{const e=SRC&&SRC.entries.find(x=>x.id===id);return e?e.label:id};
 const RF=id=>`<sup class="ref" data-ref="${id}" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup>`;
 let SRC=null,SRCFILTER='all';
@@ -414,7 +419,7 @@ function render(r){R=r;setTimeout(()=>{renderOverview();renderGlossary();renderV
    .map(([k,v])=>`<div class="card kpi"><b>${v}</b><span>${k}</span></div>`).join('');
   const d=r.summary.departments, max=Math.max(...Object.values(d).map(v=>Math.abs(v.roi_high)),1);
   $('depts').innerHTML='<tr><th>Department</th><th class=n>People</th><th class=n>Cost/head</th><th class=n>AI effect</th><th>ROI (95% range)'+RF('z95')+'</th><th>Confidence</th><th class=n>Break-even credit'+RF('realization')+'</th><th class=n>Unused seats</th></tr>'+
-   Object.entries(d).map(([k,v])=>`<tr><td>${k}<br><span class=mute style="font-size:12px">${r.unit_names[k]||''}</span></td><td class=n>${v.headcount}</td><td class=n>${usd(v.cost_per_head)}</td><td class=n>${pp(v.did_lift)}</td>
+   Object.entries(d).map(([k,v])=>`<tr><td>${k}<br><span class=mute style="font-size:12px">${esc(r.unit_names[k]||'')}</span></td><td class=n>${v.headcount}</td><td class=n>${usd(v.cost_per_head)}</td><td class=n>${pp(v.did_lift)}</td>
    <td><div class=roi><i style="width:${Math.max(2,Math.abs(v.roi)/max*90)}px;background:${v.roi<0?'var(--bad)':v.roi<1?'var(--warn)':'var(--bar)'}"></i>${roiRange(v)}</div></td>
    <td class="${v.confidence}">${v.confidence}</td><td class=n>${v.break_even_realization==null?'never':pct(v.break_even_realization)}</td><td class=n>${v.idle}</td></tr>`).join('');
   $('levels').innerHTML='<tr><th>Level</th><th class=n>People</th><th class=n>Cost/head</th><th class=n>Value/mo</th><th>ROI (95% range)</th></tr>'+
@@ -467,16 +472,33 @@ function vrow(key,label,unit,info,def){const tr=document.createElement('tr');tr.
   const ben=inp('benefit_per_user','$0',def.benefit_per_user);
   const eff=document.createElement('td');eff.className='n';eff.textContent=info?('$'+info.effective_unit_value.toFixed(2)+(info.defined?' (yours)':' (data)')):'';tr.appendChild(eff);
   const sync=()=>{const u=sel.value==='unit';hpu.disabled=rate.disabled=u;vpu.disabled=!u};sel.onchange=sync;sync();return tr}
+
+function urow(d,info,def){const tr=document.createElement('tr');tr.dataset.key=d;
+  const a=document.createElement('td');a.textContent=d;tr.appendChild(a);
+  const n=document.createElement('td');const ni=document.createElement('input');ni.className='vin';ni.dataset.f='unit_name';ni.placeholder=info.data_unit;ni.maxLength=60;ni.value=def.unit_name||'';ni.style.maxWidth='280px';ni.style.width='260px';n.appendChild(ni);tr.appendChild(n);
+  const m=document.createElement('td');const w=def.outcome_weights||{};
+  if(info.metrics.length<2){m.className='mute';m.textContent='Your data has one outcome column for this department.'}
+  else info.metrics.forEach(x=>{const sp=document.createElement('span');sp.style.cssText='display:inline-flex;align-items:center;gap:4px;margin:2px 12px 2px 0';
+    const i=document.createElement('input');i.type='number';i.step='any';i.min='0';i.className='vin num';i.dataset.metric=x.key;i.placeholder=x.key==='units'?'1':'0';if(w[x.key]!=null)i.value=w[x.key];i.style.width='72px';sp.appendChild(i);
+    const l=document.createElement('span');l.className='mute';l.textContent='x '+x.label;sp.appendChild(l);m.appendChild(sp)});
+  tr.appendChild(m);return tr}
+function renderUnits(V){const t=$('utab');if(!t)return;t.replaceChildren();const h=t.insertRow();['Department','Name of one unit','Count each metric as (weight)'].forEach(x=>{const th=document.createElement('th');th.textContent=x;h.appendChild(th)});
+  for(const [d,info] of Object.entries(V.departments))t.appendChild(urow(d,info,V.defs[d]||{}))}
 function renderValue(r){const V=r.value;if(!V)return;const t=$('vtab');t.replaceChildren();const h=t.insertRow();
   ['Department','Output unit','Method','Hours per unit','Hourly rate','Dollars per unit','Extra benefit per user / month','In effect now'].forEach((x,i)=>{const th=document.createElement('th');th.textContent=x;if(i===7)th.className='n';h.appendChild(th)});
   t.appendChild(vrow('*','All departments','(default)',null,V.defs['*']||{}));
   for(const [d,info] of Object.entries(V.departments))t.appendChild(vrow(d,d,info.unit,info,V.defs[d]||{}));
+  renderUnits(V);
   $('vjson').value=JSON.stringify(V.defs,null,2);
   $('vben').textContent=Object.values(V.defs).some(x=>x.benefit_per_user)?', plus any extra benefit per user':'';
   document.querySelectorAll('.vflag').forEach(e=>e.hidden=!V.custom)}
 function collectValue(){const defs={};document.querySelectorAll('#vtab tr[data-key]').forEach(tr=>{const d={};
   tr.querySelectorAll('.vin').forEach(i=>{if(i.disabled&&i.dataset.f!=='mode')return;const v=i.value;if(i.dataset.f==='mode'){d.mode=v;return}if(v!=='')d[i.dataset.f]=parseFloat(v)});
-  const meaningful=Object.keys(d).some(k=>k!=='mode')||d.mode==='unit';if(meaningful)defs[tr.dataset.key]=d});return defs}
+  const meaningful=Object.keys(d).some(k=>k!=='mode')||d.mode==='unit';if(meaningful)defs[tr.dataset.key]=d});
+  document.querySelectorAll('#utab tr[data-key]').forEach(tr=>{const k=tr.dataset.key,info=R.value.departments[k];const nm=tr.querySelector('[data-f=unit_name]').value.trim();
+    const ws=[...tr.querySelectorAll('[data-metric]')];const w={};let any=false;ws.forEach(i=>{if(i.value!=='')any=true;w[i.dataset.metric]=i.value===''?(i.dataset.metric==='units'?1:0):parseFloat(i.value)});
+    const d=defs[k]||{};if(nm&&nm!==info.data_unit)d.unit_name=nm;if(any){const isDefault=Object.entries(w).every(([m,v])=>v===(m==='units'?1:0));if(!isDefault)d.outcome_weights=w}
+    if(Object.keys(d).length)defs[k]=d});return defs}
 async function sendValue(defs){$('verr').textContent='';$('vmsg').textContent='';const before=R?{v:R.summary.company.monthly_value,roi:R.summary.company.roi,net:R.summary.company.net}:null;
   try{const rep=await j('/api/value',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({defs})});render(rep);loadRob();loadMath(mdept);loadEvidence();
     const c=rep.summary.company;$('vmsg').textContent=rep.value.custom?'Applied. Every number now uses your definition.':'Back to the data\'s figures.';

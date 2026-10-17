@@ -114,6 +114,45 @@ def value_def(a: "Assumptions", dept: str) -> dict:
     return d
 
 
+MAIN_METRIC = "units"  # the required outcome_units column; extra outcome_<name> columns are the other metrics
+
+
+def dept_weights(a: "Assumptions", dept: str) -> dict | None:
+    """Weights that turn a row's metrics into output units, or None for the plain outcome_units column."""
+    w = value_def(a, dept).get("outcome_weights")
+    return w if w and w != {MAIN_METRIC: 1.0} else None
+
+
+def row_units(r: dict, weights: dict | None) -> float:
+    """A row's output: the main column, or the weighted mix of metrics you defined (missing metrics count as 0)."""
+    if not weights:
+        return r["outcome_units"]
+    ex = r.get("extras", {})
+    return sum(w * (r["outcome_units"] if k == MAIN_METRIC else ex.get(k, 0.0)) for k, w in weights.items())
+
+
+def metrics_by_dept(ds: Dataset) -> dict[str, list[str]]:
+    """Metrics available per department: the main column plus any extra outcome_<name> columns with values."""
+    out: dict[str, list[str]] = {}
+    for r in ds.rows:
+        keys = out.setdefault(r["department"], [MAIN_METRIC])
+        for k in r.get("extras", {}):
+            if k not in keys:
+                keys.append(k)
+    return out
+
+
+def data_unit_name(ds: Dataset, dept: str) -> str:
+    from .data import UNIT_NAMES
+    names = [r.get("unit_name") for r in ds.rows if r["department"] == dept and r.get("unit_name")]
+    return max(set(names), key=names.count) if names else UNIT_NAMES.get(dept, "units of output")
+
+
+def unit_label(ds: Dataset, a: "Assumptions", dept: str) -> str:
+    """The name of one unit of output: yours if you defined it, else the data's, else a plain default."""
+    return value_def(a, dept).get("unit_name") or data_unit_name(ds, dept)
+
+
 def unit_value_for(vd: dict, hpu: float, rate: float) -> float:
     """Dollars one unit of output is worth. Mode 'unit' uses your dollar figure; otherwise hours x hourly rate."""
     if vd.get("mode") == "unit" and vd.get("value_per_unit") is not None:
@@ -121,7 +160,7 @@ def unit_value_for(vd: dict, hpu: float, rate: float) -> float:
     return float(vd.get("hours_per_unit", hpu)) * float(vd.get("hourly_rate", rate))
 
 
-def validate_value_defs(raw: object, departments: list[str]) -> dict:
+def validate_value_defs(raw: object, departments: list[str], metrics: dict[str, list[str]] | None = None) -> dict:
     """Check a user's value definition and return a clean copy. Raises ValueError with a plain message."""
     if not isinstance(raw, dict):
         raise ValueError("The value definition must be an object keyed by department.")
@@ -137,6 +176,31 @@ def validate_value_defs(raw: object, departments: list[str]) -> dict:
                 if v not in VALUE_MODES:
                     raise ValueError("mode must be 'time' or 'unit'.")
                 out[k] = v
+            elif k == "unit_name":
+                from .data import TEXT_OK
+                name = str(v).strip()
+                if name and not TEXT_OK.match(name):
+                    raise ValueError("The unit name may contain letters, digits, spaces and . , ( ) & / + - : % # ' only, up to 60 characters.")
+                if name:
+                    out[k] = name
+            elif k == "outcome_weights":
+                if not isinstance(v, dict) or not v:
+                    raise ValueError(f"outcome_weights for {key} must be an object like {{\"units\": 1, \"reviews\": 0.3}}.")
+                known = {m for ms in (metrics or {}).values() for m in ms} if key == "*" else set((metrics or {}).get(key, [MAIN_METRIC]))
+                w: dict[str, float] = {}
+                for mk, mv in v.items():
+                    if mk not in known:
+                        raise ValueError(f"{key} has no metric called {mk}. Available: {', '.join(sorted(known))}.")
+                    try:
+                        num = float(mv)
+                    except (TypeError, ValueError):
+                        raise ValueError(f"The weight for {mk} must be a number.")
+                    if not (0.0 <= num <= 1000.0):
+                        raise ValueError(f"The weight for {mk} must be between 0 and 1000.")
+                    w[mk] = num
+                if not any(x > 0 for x in w.values()):
+                    raise ValueError(f"At least one weight for {key} must be above zero.")
+                out[k] = w
             elif k in VALUE_LIMITS:
                 if v is None or v == "":
                     continue
@@ -150,6 +214,10 @@ def validate_value_defs(raw: object, departments: list[str]) -> dict:
                 out[k] = num
             else:
                 raise ValueError(f"Unknown field: {k}")
+        wts = out.get("outcome_weights")
+        if wts and {kk: vv for kk, vv in wts.items() if vv > 0} != {MAIN_METRIC: 1.0} and out.get("mode") != "unit" and "hours_per_unit" not in out \
+                and "hours_per_unit" not in (clean.get("*", {}) if key != "*" else {}):
+            raise ValueError(f"A weighted mix of metrics is a new unit, so say what one is worth for {key}: dollars per unit, or hours per unit.")
         if out.get("mode") == "unit" and "value_per_unit" not in out:
             raise ValueError(f"Give a value per unit for {key}, or switch it to hours x hourly rate.")
         if out:
@@ -173,6 +241,7 @@ def _analyze(ds: Dataset, a: Assumptions) -> tuple[list[Employee], dict]:
     for r in ds.rows:
         by_emp.setdefault(r["employee_id"], []).append(r)
 
+    dept_w = {d: dept_weights(a, d) for d in {r["department"] for r in ds.rows}}
     es: list[Employee] = []
     units_pre: dict[str, float] = {}
     units_win: dict[str, float] = {}
@@ -190,12 +259,13 @@ def _analyze(ds: Dataset, a: Assumptions) -> tuple[list[Employee], dict]:
         e.cost = e.seat_cost + e.token_cost
         e.sessions = sum(r["sessions"] for r in w) / n
         e.treated = e.sessions >= a.idle_sessions
-        units_win[eid] = st.median(r["outcome_units"] for r in w)  # median: one leave month must not decide it
-        um = {r["month"]: r["outcome_units"] for r in rs}
+        wts = dept_w.get(e.department)
+        units_win[eid] = st.median(row_units(r, wts) for r in w)  # median: one leave month must not decide it
+        um = {r["month"]: row_units(r, wts) for r in rs}
         if len(pre_m) >= 2 and um.get(pre_m[0], 0) > 0 and pre_m[1] in um:
             g01[eid] = um[pre_m[1]] / um[pre_m[0]] - 1
         if pre:
-            units_pre[eid] = st.mean(r["outcome_units"] for r in pre)
+            units_pre[eid] = st.mean(row_units(r, wts) for r in pre)
             if units_pre[eid] > 0:
                 e.own_baseline = True
                 e.growth = units_win[eid] / units_pre[eid] - 1
@@ -850,8 +920,8 @@ def _p(x: float, d: int = 1) -> str:
 
 def value_info(ds: Dataset, a: Assumptions) -> dict:
     """What the Your-value editor shows: the data's own figures, your definition, and what is in effect now."""
-    from .data import UNIT_NAMES
     es, stats = _analyze(ds, a)
+    mets = metrics_by_dept(ds)
     out = {}
     for d in sorted(stats):
         g = [e for e in es if e.department == d]
@@ -859,7 +929,10 @@ def value_info(ds: Dataset, a: Assumptions) -> dict:
         raw = value_defs(a)
         vd = value_def(a, d)
         out[d] = dict(
-            unit=UNIT_NAMES.get(d, "unit of output"),
+            unit=unit_label(ds, a, d), data_unit=data_unit_name(ds, d),
+            metrics=[dict(key=k, label=data_unit_name(ds, d) if k == MAIN_METRIC else k.replace("_", " ")) for k in mets.get(d, [MAIN_METRIC])],
+            weights=value_def(a, d).get("outcome_weights") or {MAIN_METRIC: 1.0},
+            composite=dept_weights(a, d) is not None,
             data_hours_per_unit=round(st.mean(e.hpu for e in g), 4), data_hourly_rate=round(st.mean(e.rate for e in g), 2),  # type: ignore[attr-defined]
             data_unit_value=round(st.mean(e.hpu * e.rate for e in g), 2),  # type: ignore[attr-defined]
             effective_unit_value=round(st.mean(e.unit_value for e in tr), 2) if tr else 0.0,
@@ -894,6 +967,12 @@ def explain(ds: Dataset, a: Assumptions, dept: str | None = None) -> dict:
     base, uv, benefit = mean(lambda e: e.base), mean(lambda e: e.unit_value), mean(lambda e: e.benefit)
     vd = value_def(a, dept)
     custom = bool(vd)
+    uname = unit_label(ds, a, dept)
+    wts = dept_weights(a, dept)
+    mix = ""
+    if wts:
+        lab = {m: (data_unit_name(ds, dept) if m == MAIN_METRIC else m.replace("_", " ")) for m in wts}
+        mix = " Output here is a weighted mix: " + " + ".join(f"{w:g} x {lab[m]}" for m, w in wts.items() if w > 0) + "."
     lift = mean(lambda e: e.lift)
     caps = _caps(es, a, PEER_PERCENTILE)
     hs = [e for e in g if e.segment == "high-spend"]
@@ -934,10 +1013,10 @@ def explain(ds: Dataset, a: Assumptions, dept: str | None = None) -> dict:
         dict(title="7. Turn the effect into dollars",
              formula=("value per user = realization x effect x baseline output x dollars per unit" + (" + extra benefit per user" if benefit else "")
                       + (". Your definition: " + (f"${vd['value_per_unit']:,.2f} per unit" if vd.get("mode") == "unit" else "hours x hourly rate") if custom else "")),
-             working=(f"Typical user: {_p(a.realization, 0)} x {_p(lift)} x {base:,.1f} units x ${uv:,.2f} per unit"
+             working=(f"Typical user: {_p(a.realization, 0)} x {_p(lift)} x {base:,.1f} {uname} x ${uv:,.2f} per unit"
                       + (f" + ${benefit:,.0f}" if benefit else "")
                       + f" = {_m(a.realization * lift * base * uv + benefit)} a month. Summed over every user (each with their "
-                      f"own numbers): {_m(value)}. Idle seats are valued at 0."),
+                      f"own numbers): {_m(value)}. Idle seats are valued at 0." + mix),
              result=f"{_m(value)} a month (range {_m(roll['value_low'])} to {_m(roll['value_high'])})"),
         dict(title="8. ROI and break-even",
              formula="ROI = (value - cost) / cost.  Break-even credit = realization x cost / value",
@@ -996,16 +1075,17 @@ def output_index(ds: Dataset, a: Assumptions) -> dict:
     use = {e.employee_id: e.treated for e in es if e.own_baseline}
     months = sorted({r["month"] for r in ds.rows})
     pre_m = set(months[:a.pre_months])
+    wts = {d: dept_weights(a, d) for d in {r["department"] for r in ds.rows}}
     pre: dict[str, list[float]] = {}
     for r in ds.rows:
         if r["month"] in pre_m and r["employee_id"] in use:
-            pre.setdefault(r["employee_id"], []).append(r["outcome_units"])
+            pre.setdefault(r["employee_id"], []).append(row_units(r, wts[r["department"]]))
     base = {k: st.mean(v) for k, v in pre.items() if v and st.mean(v) > 0}
     acc: dict[bool, dict[str, list[float]]] = {True: {m: [] for m in months}, False: {m: [] for m in months}}
     for r in ds.rows:
         eid = r["employee_id"]
         if eid in base:
-            acc[use[eid]][r["month"]].append(r["outcome_units"] / base[eid] * 100)
+            acc[use[eid]][r["month"]].append(row_units(r, wts[r["department"]]) / base[eid] * 100)
     f = lambda grp: [round(st.mean(acc[grp][m]), 2) if acc[grp][m] else None for m in months]  # noqa: E731
     return dict(months=months, users=f(True), non_users=f(False), pre_months=a.pre_months,
                 n_users=sum(1 for k in base if use[k]), n_non_users=sum(1 for k in base if not use[k]))

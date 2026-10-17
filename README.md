@@ -23,7 +23,8 @@ data, and lets you question the results in plain English. Answers come from NVID
   what-if returns if the effect matched each published study, the measured effect by experience level, and a check of
   what employees say against what was measured.
 - **Lets you define what AI output is worth:** the Your value tab sets, per department, how a unit of output is valued (hours x
-  hourly rate from the data, or your own dollar figure per unit) plus an optional benefit per user. Every result updates, a
+  hourly rate from the data, or your own dollar figure per unit), what one unit of output is called, how several metrics
+  count towards output (for example a pull request = 1, a review = 0.3), plus an optional benefit per user. Every result updates, a
   before-and-after shows what changed, and the definition can be downloaded as JSON.
 - **References every value:** a Sources tab and an ⓘ next to each value say where it comes from: a published study, a public
   price list, our rule of thumb, or an assumption with no source. Values are read from the running code, and a test keeps
@@ -75,7 +76,9 @@ Open http://localhost:8077. The dashboard works without a key; the brief and Q&A
 
 Upload a CSV with one row per employee per month. Required columns: `employee_id, department, role, month, seat_cost,
 token_cost, tokens, sessions, outcome_units, hours_per_unit, hourly_rate`. Optional: `level` (intern, junior, mid,
-senior; default mid). You need at least 4 months, and the first 2 should be before AI rollout: they are each person's
+senior; default mid), `unit_name` (what one unit of `outcome_units` is called, e.g. "story points"), and any number of
+extra `outcome_<metric>` columns (e.g. `outcome_reviews`). Names use letters, digits, spaces and light punctuation only.
+On the Your value tab you can rename the unit and define output as a weighted mix of your metrics. You need at least 4 months, and the first 2 should be before AI rollout: they are each person's
 baseline. Join vendor billing (cost, tokens, sessions) with your work systems (outcome units) and HR data (role, rate).
 Download the sample CSV from the UI to see the exact shape.
 

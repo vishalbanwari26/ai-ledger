@@ -840,3 +840,116 @@ def test_sources_document_is_in_sync_with_the_code():
     spec = importlib.util.spec_from_file_location("build_sources_doc", root / "tools/build_sources_doc.py")
     mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
     assert (root / "docs/sources.md").read_text() == mod.render(), "run: python tools/build_sources_doc.py"
+
+
+# ---------------------------------------------------------------- your own unit of output
+
+def test_csv_carries_unit_names_and_extra_metrics():
+    ds = data.generate(scale=0.05)
+    text = ds.to_csv()
+    header = text.splitlines()[0].split(",")
+    assert "unit_name" in header and "outcome_reviews" in header and "outcome_commits" in header
+    back = data.load_csv(text)
+    assert back.rows[0]["unit_name"] == "PRs merged" and set(back.rows[0]["extras"]) == {"reviews", "commits"}
+    assert len(back.rows) == len(ds.rows)
+
+
+def test_extra_metrics_do_not_change_the_main_numbers():
+    with_x, without = data.generate(extras=True), data.generate(extras=False)
+    assert [r["outcome_units"] for r in with_x.rows] == [r["outcome_units"] for r in without.rows]   # separate random stream
+    a = an.Assumptions()
+    assert an.summary(with_x, a)["company"]["monthly_value"] == an.summary(without, a)["company"]["monthly_value"]
+
+
+def test_unit_name_precedence_yours_then_data_then_default():
+    ds, a = data.generate(scale=0.05), an.Assumptions()
+    assert an.unit_label(ds, a, "Engineering") == "PRs merged"
+    assert an.unit_label(ds, _with_defs({"Engineering": {"unit_name": "story points"}}), "Engineering") == "story points"
+    bare = data.load_csv("\n".join(l for l in data.generate(scale=0.05, extras=False).to_csv().splitlines()))
+    for r in bare.rows:
+        r.pop("unit_name", None)
+    assert an.unit_label(bare, a, "Engineering") == data.UNIT_NAMES["Engineering"]
+
+
+def _mix(**w):
+    return {"Engineering": {"outcome_weights": w, "mode": "unit", "value_per_unit": 100}}
+
+
+def test_weights_of_one_on_the_main_metric_change_nothing():
+    ds = data.generate()
+    plain = an.summary(ds, an.Assumptions())["departments"]["Engineering"]
+    same = an.summary(ds, _with_defs({"Engineering": {"outcome_weights": {"units": 1}}}))["departments"]["Engineering"]
+    assert plain["monthly_value"] == same["monthly_value"] and plain["did_lift"] == same["did_lift"]
+
+
+def test_a_weighted_mix_is_measured_on_the_mix():
+    ds = data.generate()
+    es_a, _ = an._analyze(ds, _with_defs(_mix(units=1.0)))
+    es_b, _ = an._analyze(ds, _with_defs(_mix(units=1.0, reviews=0.3, commits=0.1)))
+    a_base = {e.employee_id: e.base for e in es_a if e.department == "Engineering" and e.treated}
+    b_base = {e.employee_id: e.base for e in es_b if e.department == "Engineering" and e.treated}
+    ratios = [b_base[k] / a_base[k] for k in a_base if k in b_base and a_base[k] > 0]
+    assert ratios and min(ratios) > 1.0                       # the mix is bigger per person than PRs alone
+    only_commits = an.summary(ds, _with_defs(_mix(commits=1.0)))["departments"]["Engineering"]
+    assert only_commits["did_lift"] != an.summary(ds, an.Assumptions())["departments"]["Engineering"]["did_lift"]  # a different metric has its own effect
+
+
+def test_output_index_follows_the_definition():
+    ds = data.generate()
+    plain = an.output_index(ds, an.Assumptions())
+    mixed = an.output_index(ds, _with_defs(_mix(commits=1.0)))
+    assert plain["users"] != mixed["users"] and len(mixed["users"]) == 5
+
+
+def test_output_definition_validation():
+    ds = data.generate(scale=0.05)
+    mets, depts = an.metrics_by_dept(ds), sorted(an.metrics_by_dept(ds))
+    ok = an.validate_value_defs({"Engineering": {"outcome_weights": {"units": 1, "reviews": "0.3"}, "mode": "unit", "value_per_unit": 80}}, depts, mets)
+    assert ok["Engineering"]["outcome_weights"] == {"units": 1.0, "reviews": 0.3}
+    bad = [{"Engineering": {"outcome_weights": {"nope": 1}}},
+           {"Engineering": {"outcome_weights": {"units": -1}}},
+           {"Engineering": {"outcome_weights": {"units": 0, "reviews": 0}}},
+           {"Engineering": {"outcome_weights": {"units": 1, "reviews": 0.3}}},          # a new unit needs a price
+           {"Engineering": {"outcome_weights": {}}},
+           {"Engineering": {"unit_name": "<img src=x onerror=alert(1)>"}},
+           {"Engineering": {"unit_name": "x" * 80}}]
+    for b in bad:
+        try:
+            an.validate_value_defs(b, depts, mets)
+        except ValueError:
+            continue
+        raise AssertionError(f"accepted {b}")
+    assert an.validate_value_defs({"Engineering": {"outcome_weights": {"units": 1, "reviews": 0.3}, "hours_per_unit": 2}}, depts, mets)
+
+
+def test_uploads_reject_markup_in_names():
+    base = data.generate(scale=0.05).to_csv()
+    for needle, repl in (("Engineering", "<b>Engineering</b>"), ("PRs merged", "<script>alert(1)</script>")):
+        try:
+            data.load_csv(base.replace(needle, repl, 5))
+        except ValueError as e:
+            assert "may contain" in str(e)
+        else:
+            raise AssertionError(f"accepted {repl}")
+    c = TestClient(app)
+    assert c.post("/api/upload", files={"file": ("x.csv", base.replace("Engineering", "<i>E</i>", 5).encode())}).status_code == 422
+    bad_col = base.replace("outcome_reviews", "outcome_re views;drop", 1)
+    try:
+        data.load_csv(bad_col)
+    except ValueError as e:
+        assert "letters, digits and underscores" in str(e)
+
+
+def test_unit_api_and_worked_maths():
+    c = TestClient(app)
+    r = c.post("/api/value", json={"defs": {"Engineering": {"unit_name": "story points"}}}).json()
+    assert r["unit_names"]["Engineering"] == "story points" and r["value"]["departments"]["Engineering"]["data_unit"] == "PRs merged"
+    no_price = {"Engineering": {"outcome_weights": {"units": 1, "reviews": 0.3}}}
+    assert c.post("/api/value", json={"defs": no_price}).status_code == 422                              # a new unit needs a price
+    good = {"Engineering": {"outcome_weights": {"units": 1, "reviews": 0.3}, "mode": "unit", "value_per_unit": 100, "unit_name": "points"}}
+    r2 = c.post("/api/value", json={"defs": good}).json()
+    assert r2["value"]["departments"]["Engineering"]["composite"] is True
+    step = c.get("/api/explain?department=Engineering").json()["department"]["steps"][6]["working"]
+    assert "points" in step and "weighted mix" in step and "0.3 x reviews" in step
+    assert "esc(r.unit_names" in c.get("/").text                                                          # the page escapes what it shows
+    c.post("/api/value", json={"defs": {}})

@@ -92,6 +92,11 @@ def _entries(a: an.Assumptions) -> list[dict]:
         "yours" if yours else "data", "Value per user, ROI, break-even, policies",
         "By default each department's own hours per unit and hourly rate from your data. Replace it with a dollar value per unit, "
         "or add a benefit per user, on the Your value tab.", caveat="In the demo company these rates and hours are invented (see demo-data entries).")
+    add("output_unit", G1, "What counts as one unit of output", "the main outcome column, named by your data", "yours" if yours else "data",
+        "The AI effect on output, value per unit, every dollar figure",
+        "Your CSV's outcome_units column is the output, named by its unit_name column. You can rename it, or define output as a "
+        "weighted mix of extra outcome_<name> columns, on the Your value tab.",
+        caveat="In the demo company the unit names and extra metrics are invented.")
     add("seat_savings_realized", G1, "Share of a reclaimed seat's cost actually saved", _pct(d0.seat_savings_realized), "assumption",
         "Unused-seat savings, the plan's saving, the headline",
         "Contracts have minimums and notice periods, so not every cancelled dollar comes back.", ["claude-plans"],

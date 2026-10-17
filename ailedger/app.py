@@ -63,7 +63,8 @@ def _report(st: Analyst) -> dict:
                 budgets=an.budget_recommendations(st.ds, a), waste=an.waste(st.ds, a), plan=an.plan_savings(st.ds, a), output_index=an.output_index(st.ds, a),
                 actions=an.actions(st.ds, a), routing=an.routing(st.ds, a), trend=an.trend(st.ds),
                 validation=an.validate(st.ds, a), policy_assumptions=an.POLICY_ASSUMPTIONS, ppu_breakeven=an.pay_per_use_breakeven(st.ds, a),
-                value=an.value_info(st.ds, a), unit_names=data.UNIT_NAMES, rows=len(st.ds.rows))
+                value=an.value_info(st.ds, a),
+                unit_names={d: an.unit_label(st.ds, a, d) for d in sorted({r["department"] for r in st.ds.rows})}, rows=len(st.ds.rows))
 
 
 @app.get("/")
@@ -122,7 +123,7 @@ def set_value(body: ValueBody, request: Request, response: Response):
     st = get_state(request, response)
     depts = sorted({r["department"] for r in st.ds.rows})
     try:
-        clean = an.validate_value_defs(body.defs, depts)
+        clean = an.validate_value_defs(body.defs, depts, an.metrics_by_dept(st.ds))
     except ValueError as e:
         raise HTTPException(422, str(e))
     st.assumptions = replace(st.assumptions, value_json=json.dumps(clean, sort_keys=True) if clean else "")

@@ -13,6 +13,7 @@ from __future__ import annotations
 import csv
 import io
 import random
+import re
 from dataclasses import dataclass, field
 
 COLUMNS = [
@@ -67,6 +68,17 @@ MIX = {
     "Finance": {"power": 0.08, "steady": 0.22, "light": 0.25, "unused": 0.40, "heavy_no_gain": 0.05},
     "Legal": {"power": 0.20, "steady": 0.30, "light": 0.20, "unused": 0.20, "heavy_no_gain": 0.10},
 }
+# Other things a team might count as output, to show the data can carry more than one metric. Demo data only.
+# (metric, how many per main unit, how much of the AI lift it picks up). Each has its own noise and a different AI sensitivity.
+EXTRA_METRICS = {
+    "Engineering": [("reviews", 0.8, 0.5), ("commits", 3.2, 1.2)],
+    "Support": [("chats", 1.4, 0.8), ("surveys_returned", 0.3, 0.5)],
+    "Sales": [("calls", 6.0, 0.6), ("emails", 14.0, 0.9)],
+    "Marketing": [("drafts", 1.8, 0.7), ("campaign_tasks", 2.5, 0.5)],
+    "Finance": [("reconciliations", 3.0, 0.6), ("forecast_updates", 1.2, 0.5)],
+    "Legal": [("clauses_checked", 8.0, 0.7), ("matters_opened", 0.6, 0.4)],
+}
+TEXT_OK = re.compile(r"^[\w &/().,+'\-:%#]{0,60}$")  # letters, digits, spaces and light punctuation; no markup characters
 TOKEN_PRICE_PER_M = 5.0  # blended $/1M tokens across fast and frontier models, after caching
 MONTHS = ["2026-05", "2026-06", "2026-07", "2026-08", "2026-09"]
 COMPANY_TREND = 0.025  # everyone's output rises 2.5% a month (busy season). A before/after check would credit this to AI.
@@ -77,12 +89,24 @@ class Dataset:
     rows: list[dict]
     truth: dict[str, dict] = field(default_factory=dict)  # employee_id -> hidden labels (generator only)
 
-    def to_csv(self) -> str:
-        buf = io.StringIO()
-        w = csv.DictWriter(buf, fieldnames=COLUMNS)
-        w.writeheader()
+    def extra_keys(self) -> list[str]:
+        seen: list[str] = []
         for r in self.rows:
-            w.writerow({c: r[c] for c in COLUMNS})
+            for k in r.get("extras", {}):
+                if k not in seen:
+                    seen.append(k)
+        return seen
+
+    def to_csv(self) -> str:
+        extras = self.extra_keys()
+        has_unit = any(r.get("unit_name") for r in self.rows)
+        header = COLUMNS + (["unit_name"] if has_unit else []) + [f"outcome_{k}" for k in extras]
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(header)
+        for r in self.rows:
+            row = [r[c] for c in COLUMNS] + ([r.get("unit_name", "")] if has_unit else []) + [r.get("extras", {}).get(k, "") for k in extras]
+            w.writerow(row)
         return buf.getvalue()
 
 
@@ -96,7 +120,7 @@ def _pick(rng: random.Random, mix: dict[str, float]) -> str:
 
 
 def generate(seed: int = 7, messy: bool = True, noise: float = 0.07, trend: float = COMPANY_TREND,
-             adopter_drift: float = 0.0, scale: float = 1.0, level_lift: bool = True) -> Dataset:
+             adopter_drift: float = 0.0, scale: float = 1.0, level_lift: bool = True, extras: bool = True) -> Dataset:
     """messy=True adds the cases that break naive analysis: part-timers, people on leave, new hires.
 
     Knobs for stress tests: noise (monthly output noise, +/- fraction), trend (company-wide monthly growth),
@@ -104,6 +128,7 @@ def generate(seed: int = 7, messy: bool = True, noise: float = 0.07, trend: floa
     scale (headcount multiplier), level_lift (False gives every level the same lift, a flat case for tests).
     """
     rng = random.Random(seed)
+    rng_x = random.Random(seed + 1)  # extra metrics draw from their own stream, so the main numbers never change
     rows: list[dict] = []
     truth: dict[str, dict] = {}
     n = 0
@@ -140,39 +165,63 @@ def generate(seed: int = 7, messy: bool = True, noise: float = 0.07, trend: floa
                 units = personal_base * growth * (1 + lift) * rng.uniform(1 - noise, 1 + noise)
                 if i >= 2:
                     win_lifts.append(lift)
+                mod = 1.0
                 if part_time:
-                    units *= 0.5
+                    mod *= 0.5
                     sessions //= 2
                     tokens //= 2
                 if leave_month == i:
-                    units *= 0.2
+                    mod *= 0.2
                     sessions = 0
                     tokens = 0
-                rows.append(dict(
+                units_main = units
+                units *= mod
+                row = dict(
                     employee_id=eid, department=dept, role=role, level=level, month=month,
                     seat_cost=SEAT_COSTS[dept], token_cost=round(tokens / 1e6 * TOKEN_PRICE_PER_M, 2),
                     tokens=tokens, sessions=sessions, outcome_units=round(units, 2),
-                    hours_per_unit=hpu, hourly_rate=round(rate * lv["rate"], 2),
-                ))
+                    hours_per_unit=hpu, hourly_rate=round(rate * lv["rate"], 2), unit_name=UNIT_NAMES[dept])
+                if extras:
+                    core = units_main / (1 + lift)
+                    row["extras"] = {k: round(core * f * (1 + lift * share) * mod * rng_x.uniform(0.9, 1.1), 2)
+                                     for k, f, share in EXTRA_METRICS[dept]}
+                rows.append(row)
             truth[eid]["lift_window"] = sum(win_lifts) / len(win_lifts) if win_lifts else 0.0
     return Dataset(rows, truth)
 
 
+def _safe(value: str, field: str) -> str:
+    v = (value or "").strip()
+    if not TEXT_OK.match(v):
+        raise ValueError(f"{field} may contain letters, digits, spaces and . , ( ) & / + - : % # ' only, up to 60 characters. Got: {v[:40]!r}")
+    return v
+
+
 def load_csv(text: str) -> Dataset:
     reader = csv.DictReader(io.StringIO(text))
-    missing = set(COLUMNS) - set(OPTIONAL) - set(reader.fieldnames or [])
+    names = reader.fieldnames or []
+    missing = set(COLUMNS) - set(OPTIONAL) - set(names)
     if missing:
         raise ValueError(f"CSV is missing columns: {sorted(missing)}")
+    extra_cols = [c for c in names if c.startswith("outcome_") and c != "outcome_units"]
+    for c in extra_cols:
+        if not re.fullmatch(r"outcome_[A-Za-z0-9_]{1,40}", c):
+            raise ValueError(f"Extra outcome column names may use letters, digits and underscores only: {c[:40]!r}")
     rows = []
     for r in reader:
-        rows.append(dict(
-            employee_id=r["employee_id"], department=r["department"], role=r["role"],
-            level=(r.get("level") or OPTIONAL["level"]).strip().lower(), month=r["month"],
+        row = dict(
+            employee_id=_safe(r["employee_id"], "employee_id"), department=_safe(r["department"], "department"),
+            role=_safe(r["role"], "role"), level=_safe(r.get("level") or OPTIONAL["level"], "level").lower(),
+            month=_safe(r["month"], "month"),
             seat_cost=float(r["seat_cost"]), token_cost=float(r["token_cost"]),
             tokens=int(float(r["tokens"])), sessions=int(float(r["sessions"])),
             outcome_units=float(r["outcome_units"]),
             hours_per_unit=float(r["hours_per_unit"]), hourly_rate=float(r["hourly_rate"]),
-        ))
+            unit_name=_safe(r.get("unit_name") or "", "unit_name"))
+        ex = {c[len("outcome_"):]: float(r[c]) for c in extra_cols if (r.get(c) or "").strip() != ""}
+        if ex:
+            row["extras"] = ex
+        rows.append(row)
     if not rows:
         raise ValueError("CSV has no rows")
     if len({r["month"] for r in rows}) < 4:
