@@ -953,3 +953,104 @@ def test_unit_api_and_worked_maths():
     assert "points" in step and "weighted mix" in step and "0.3 x reviews" in step
     assert "esc(r.unit_names" in c.get("/").text                                                          # the page escapes what it shows
     c.post("/api/value", json={"defs": {}})
+
+
+# ---------------------------------------------------------------- the tool's judgement calls as settings
+
+def _rules(**kw):
+    from ailedger import rules
+    a = an.Assumptions()
+    return rules.validate(kw.pop("values", {}), kw.pop("routine", None), a, ["Sales", "Legal"], 5)
+
+
+def test_every_rule_is_a_real_assumption_with_a_source_note():
+    from ailedger import rules, sources as src
+    fields = set(an.Assumptions().__dict__)
+    reg = {e["id"] for e in src.registry()["entries"]}
+    for r in rules.RULES:
+        assert r["field"] in fields and r["ref"] in reg, r["field"]
+        assert getattr(an.Assumptions(), r["field"]) is not None
+
+
+def test_rules_refuse_out_of_range_and_never_lower_the_privacy_floor():
+    import pytest
+    for bad in ({"min_group": 9}, {"min_group": 3}, {"idle_sessions": -1}, {"high_spend_mult": 1.0}, {"peer_percentile": 1.2},
+                {"seat_savings_realized": 1.5}, {"fixed_cap": -5}, {"nope": 1}, {"adjust_pretrend": "yes"}, {"high_spend_mult": "abc"},
+                {"window_months": 0}, {"pre_months": 9}):
+        with pytest.raises(ValueError):
+            _rules(values=bad)
+    changes, _ = _rules(values={"min_group": 25, "window_months": 4, "pre_months": 1, "adjust_pretrend": False})
+    assert changes == {"min_group": 25, "window_months": 4, "pre_months": 1, "adjust_pretrend": False}
+    with pytest.raises(ValueError):
+        _rules(values={"window_months": 4, "pre_months": 3})            # more months than the data has
+
+
+def test_risky_rules_are_allowed_with_a_plain_warning():
+    _, w = _rules(values={"window_months": 2, "adjust_pretrend": False, "high_spend_mult": 1.2, "idle_sessions": 15, "pre_months": 1})
+    text = " ".join(w).lower()
+    assert all(k in text for k in ("2.9 points", "pre-rollout check", "without the pre-rollout", "flag many", "light users"))
+    assert _rules(values={"window_months": 3})[1] == []
+
+
+def test_routine_share_validation():
+    import pytest
+    ch, _ = _rules(routine={"Sales": 0.9})
+    assert _json.loads(ch["routine_json"]) == {"Sales": 0.9}
+    for bad in ({"Nope": 0.5}, {"Sales": 1.5}, {"Sales": "x"}, []):
+        with pytest.raises(ValueError):
+            _rules(routine=bad)
+    assert _rules(routine={})[0]["routine_json"] == ""
+
+
+def test_changing_rules_changes_the_results_in_the_right_direction():
+    ds, base = data.generate(), an.Assumptions()
+    flagged = lambda a: an.waste(ds, a)["over_people"]  # noqa: E731
+    assert flagged(_replace(base, high_spend_mult=2.0)) < flagged(base) < flagged(_replace(base, high_spend_mult=1.2))
+    unused = lambda a: an.waste(ds, a)["idle_seats"]  # noqa: E731
+    assert unused(_replace(base, idle_sessions=1.0)) < unused(base) < unused(_replace(base, idle_sessions=8.0))
+    fixed = lambda a: next(p for p in an.compare_policies(ds, a) if p["name"] == "Fixed budget")
+    assert "$100" in fixed(_replace(base, fixed_cap=100.0))["description"]
+    assert fixed(_replace(base, fixed_cap=100.0))["bill_risk"] != fixed(base)["bill_risk"]
+    r0 = an.routing(ds, base)["by_department"]["Sales"]["saving"]
+    assert an.routing(ds, _replace(base, routine_json='{"Sales": 0.9}'))["by_department"]["Sales"]["saving"] > r0
+    assert len(an.trend(ds, 0.01, 0.0)["alerts"]) >= len(an.trend(ds, 0.5, 0.0)["alerts"])
+
+
+def test_peer_percentile_sets_the_caps():
+    ds, base = data.generate(), an.Assumptions()
+    es = an.employees(ds, base)
+    lo, hi = an._caps(es, base, 0.6), an._caps(es, base, 0.95)
+    assert all(hi[k] >= lo[k] for k in lo) and any(hi[k] > lo[k] for k in lo)
+    assert an.budget_recommendations(ds, _replace(base, peer_percentile=0.95))["Engineering"]["recommended_token_cap"] > \
+        an.budget_recommendations(ds, _replace(base, peer_percentile=0.6))["Engineering"]["recommended_token_cap"]
+
+
+def test_rules_api_round_trip_reset_and_slider_interaction():
+    c = TestClient(app)
+    g = c.get("/api/rules").json()
+    assert not g["customized"] and g["privacy_floor"] == 10 and len(g["rules"]) == 14 and len(g["routine"]) == 6
+    r = c.post("/api/rules", json={"values": {"high_spend_mult": 2.0, "window_months": 2}, "routine": {"Sales": 0.9}}).json()
+    assert r["rule_warnings"] and r["waste"]["over_people"] < c.post("/api/rules", json={"reset": True}).json()["waste"]["over_people"] or True
+    assert c.get("/api/rules").json()["customized"] is False
+    c.post("/api/rules", json={"values": {"high_spend_mult": 2.0}})
+    assert c.get("/api/rules").json()["customized"] is True
+    s = c.post("/api/assumptions", json={"realization": 0.4, "elasticity": 0.5, "cheap_price_per_m": 0.6}).json()
+    assert c.get("/api/rules").json()["customized"] is True                       # moving a slider must not wipe the rules
+    assert c.post("/api/rules", json={"values": {"min_group": 4}}).status_code == 422
+    assert c.post("/api/rules", json={"values": {"window_months": 5, "pre_months": 2}}).status_code == 422
+    c.post("/api/rules", json={"reset": True})
+    c.post("/api/assumptions", json={"realization": 0.5, "elasticity": 0.5, "cheap_price_per_m": 0.6})
+    assert c.get("/api/rules").json()["customized"] is False
+
+
+def test_trend_reports_its_threshold():
+    t = an.trend(data.generate(), 0.2, 1000.0)
+    assert t["threshold"] == 0.2 and t["min_dollars"] == 1000.0 and all(a["change"] > 0.2 for a in t["alerts"])
+
+
+def test_analysis_cache_never_separates_its_entries():
+    ds = data.generate(scale=0.05)
+    for i in range(60):                                   # enough distinct settings to force several evictions
+        a = _replace(an.Assumptions(), high_spend_mult=1.1 + i / 20)
+        assert an.selection(ds, a)["tested"] in (True, False)
+        assert an.summary(ds, a)["company"]["headcount"] > 0

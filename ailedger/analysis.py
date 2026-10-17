@@ -54,6 +54,12 @@ class Assumptions:
     ppu_multiplier: float = 1.6       # pay per use: list price of tokens vs the seat-plan rate. Get a real quote.
     ppu_friction: float = 0.05        # pay per use: share of value lost because people ration metered use
     value_json: str = ""              # your definition of value per department (JSON); empty = hours x hourly rate from the data
+    high_spend_mult: float = HIGH_SPEND_MULT   # high spend = above this multiple of peers' median token spend (and ROI below 0)
+    peer_percentile: float = PEER_PERCENTILE   # token caps follow this percentile of ROI-positive peers' spend
+    fixed_cap: float = 60.0           # the fixed-budget policy's flat monthly token cap per person
+    drift_alert: float = DRIFT_ALERT  # monthly spend jump that raises a drift alert
+    drift_min_dollars: float = DRIFT_MIN_DOLLARS  # ... and only if it is also at least this many dollars
+    routine_json: str = ""            # per-department share of tokens that are routine (JSON); empty = the defaults
 
 
 @dataclass
@@ -86,7 +92,8 @@ class Employee:
 
 # Only these assumptions change the per-person estimates. The others (elasticity, prices, seat savings) only
 # change what policies do with them, so robustness sweeps can reuse the same estimates.
-_ANALYSIS_FIELDS = ("window_months", "pre_months", "realization", "idle_sessions", "min_cohort", "adjust_pretrend", "value_json")
+_ANALYSIS_FIELDS = ("window_months", "pre_months", "realization", "idle_sessions", "min_cohort", "adjust_pretrend", "value_json",
+                    "high_spend_mult")
 
 
 def _akey(a: "Assumptions") -> tuple:
@@ -335,22 +342,28 @@ def _analyze(ds: Dataset, a: Assumptions) -> tuple[list[Employee], dict]:
             e.segment = "high-return"
         elif e.roi >= 0.0:
             e.segment = "break-even"
-        elif e.token_cost > HIGH_SPEND_MULT * peers(e):
+        elif e.token_cost > a.high_spend_mult * peers(e):
             e.segment = "high-spend"
         else:
             e.segment = "low-return"
     out = (es, stats)
-    cache[("sel",) + key] = sel
-    if len(cache) > 24:
-        cache.clear()
+    if len(cache) > 48:
+        cache.clear()  # evict first, then store both entries together so they can never be separated
     cache[key] = out
+    cache[("sel",) + key] = sel
     return out
 
 
 def selection(ds: Dataset, a: Assumptions) -> dict:
     """Result of the parallel-trends check: did adopters already grow faster before rollout?"""
     _analyze(ds, a)
-    return ds.__dict__["_cache"][("sel",) + _akey(a)]
+    cache = ds.__dict__["_cache"]
+    sel = cache.get(("sel",) + _akey(a))
+    if sel is None:  # the entry was evicted: recompute rather than fail
+        cache.pop(_akey(a), None)
+        _analyze(ds, a)
+        sel = cache[("sel",) + _akey(a)]
+    return sel
 
 
 def _cohort_counts(es: list[Employee], pred) -> dict[tuple, int]:
@@ -493,7 +506,7 @@ def _cap_for(e: Employee, caps: dict[tuple, float]) -> float:
 def waste(ds: Dataset, a: Assumptions) -> dict:
     """Recoverable monthly spend: unused seats (after contract friction) plus high spend above peer norms."""
     es = employees(ds, a)
-    caps = _caps(es, a, PEER_PERCENTILE)
+    caps = _caps(es, a, a.peer_percentile)
     per: dict[str, dict] = {}
     for e in es:
         d = per.setdefault(e.department, dict(idle_seats=0, idle_cost=0.0, over_people=0, over_cost=0.0))
@@ -525,7 +538,7 @@ def actions(ds: Dataset, a: Assumptions) -> list[dict]:
     """Proposed changes, one row per department and level, each with a reason. Approve before acting.
     Groups under `min_group` people are merged per department; no row ever identifies a person."""
     es = employees(ds, a)
-    caps = _caps(es, a, PEER_PERCENTILE)
+    caps = _caps(es, a, a.peer_percentile)
     buckets: dict[tuple, list[Employee]] = {}
     for e in es:
         if e.segment in ("idle", "high-spend"):
@@ -568,6 +581,15 @@ def actions(ds: Dataset, a: Assumptions) -> list[dict]:
 
 # ---------------------------------------------------------------- model routing
 
+def routine_shares(a: Assumptions) -> dict[str, float]:
+    """Share of tokens that are routine, by department: the defaults with your overrides on top."""
+    try:
+        mine = json.loads(a.routine_json) if a.routine_json else {}
+    except ValueError:
+        mine = {}
+    return {**ROUTINE_SHARE, **(mine if isinstance(mine, dict) else {})}
+
+
 def routing(ds: Dataset, a: Assumptions) -> dict:
     """What if routine tokens ran on a cheaper open model (e.g. Nemotron Nano on Token Factory)?"""
     months = sorted({r["month"] for r in ds.rows})
@@ -582,7 +604,7 @@ def routing(ds: Dataset, a: Assumptions) -> dict:
         value[e.department] = value.get(e.department, 0.0) + e.value
     per = {}
     for d, tok in tokens.items():
-        share = ROUTINE_SHARE.get(d, 0.5)
+        share = routine_shares(a).get(d, 0.5)
         routed = tok * share
         saving = routed / 1e6 * max(0.0, TOKEN_PRICE_PER_M - a.cheap_price_per_m)
         risk = a.quality_penalty * share * value.get(d, 0.0)
@@ -611,7 +633,7 @@ def trend(ds: Dataset, drift: float = DRIFT_ALERT, min_dollars: float = DRIFT_MI
                 alerts.append(dict(department=d, month=months[-1], previous=round(prev), latest=round(last),
                                    change=round(last / prev - 1, 3)))
     total = [round(sum(series[d][m] for d in series)) for m in months]
-    return dict(months=months, company=total, alerts=sorted(alerts, key=lambda x: -x["change"]),
+    return dict(months=months, company=total, threshold=drift, min_dollars=min_dollars, alerts=sorted(alerts, key=lambda x: -x["change"]),
                 by_department={d: [round(s[m]) for m in months] for d, s in sorted(series.items())})
 
 
@@ -688,13 +710,13 @@ def standard_policies(a: Assumptions | None = None) -> list[Policy]:
     a = a or Assumptions()
     return [
         Policy("Status quo", "Everyone keeps a seat; token spend is uncapped."),
-        Policy("Fixed budget", "Flat $60 token cap for everyone, seats unchanged.", cap_mode="flat", flat_cap=60.0),
+        Policy("Fixed budget", f"Flat ${a.fixed_cap:,.0f} token cap for everyone, seats unchanged.", cap_mode="flat", flat_cap=a.fixed_cap),
         Policy("Pay per use", f"No seats. Tokens bought at list price ({a.ppu_multiplier:g}x the seat-plan rate), "
                f"uncapped. Assumes {a.ppu_friction:.0%} less use because people see the meter.",
                seat_fee=0.0, price_multiplier=a.ppu_multiplier, friction=a.ppu_friction),
         Policy("Variable by role", "Seats only for active users; token cap set per department and level from what "
                "ROI-positive peers actually spend; unused allowance pooled in the department.",
-               reclaim_idle=True, cap_mode="role", pooled=True),
+               reclaim_idle=True, cap_mode="role", pooled=True, cap_pctile=a.peer_percentile),
     ]
 
 
@@ -743,7 +765,7 @@ def plan_savings(ds: Dataset, a: Assumptions) -> dict:
     """Where the 'Variable by role' plan's saving comes from, per department, and what it leaves on the table."""
     from dataclasses import replace
     es = employees(ds, a)
-    caps = _caps(es, a, PEER_PERCENTILE)
+    caps = _caps(es, a, a.peer_percentile)
     plan = next(p for p in standard_policies(a) if p.name == "Variable by role")
     hard = replace(plan, pooled=False)  # same caps, enforced per person instead of pooled in the department
     sq = Policy("Status quo", "")
@@ -764,7 +786,7 @@ def plan_savings(ds: Dataset, a: Assumptions) -> dict:
 def budget_recommendations(ds: Dataset, a: Assumptions) -> dict:
     """Per-department verdict: fixed or variable, and a per-head monthly budget by level."""
     es = employees(ds, a)
-    caps = _caps(es, a, PEER_PERCENTILE)
+    caps = _caps(es, a, a.peer_percentile)
     plan = plan_savings(ds, a)["by_department"]
     out = {}
     for d in sorted({e.department for e in es}):
@@ -974,7 +996,7 @@ def explain(ds: Dataset, a: Assumptions, dept: str | None = None) -> dict:
         lab = {m: (data_unit_name(ds, dept) if m == MAIN_METRIC else m.replace("_", " ")) for m in wts}
         mix = " Output here is a weighted mix: " + " + ".join(f"{w:g} x {lab[m]}" for m, w in wts.items() if w > 0) + "."
     lift = mean(lambda e: e.lift)
-    caps = _caps(es, a, PEER_PERCENTILE)
+    caps = _caps(es, a, a.peer_percentile)
     hs = [e for e in g if e.segment == "high-spend"]
     over = sum(max(0.0, e.token_cost - _cap_for(e, caps)) for e in hs)
     steps = [
@@ -1039,7 +1061,7 @@ def explain(ds: Dataset, a: Assumptions, dept: str | None = None) -> dict:
 def explain_policies(ds: Dataset, a: Assumptions) -> list[dict]:
     es = employees(ds, a)
     pols = compare_policies(ds, a)
-    cap60 = sum(1 for e in es if e.token_cost > 60)
+    cap60 = sum(1 for e in es if e.token_cost > a.fixed_cap)
     idle = [e for e in es if e.segment == "idle"]
     by = {r["name"]: r for r in pols}
     f = lambda r: f"cost {_m(r['monthly_cost'])}, value {_m(r['monthly_value'])}, net {_m(r['net'])}"  # noqa: E731
@@ -1048,7 +1070,7 @@ def explain_policies(ds: Dataset, a: Assumptions) -> list[dict]:
              working=f(by["Status quo"])),
         dict(policy="Fixed budget",
              formula="spend above the cap is cut to the cap; value kept = (cap / spend)^elasticity",
-             working=f"{cap60} people spend over $60. Elasticity {a.elasticity:g}. " + f(by["Fixed budget"])),
+             working=f"{cap60} people spend over ${a.fixed_cap:,.0f}. Elasticity {a.elasticity:g}. " + f(by["Fixed budget"])),
         dict(policy="Pay per use",
              formula="no seats. cost = tokens x list-price multiplier. value x (1 - ration rate)",
              working=f"multiplier {a.ppu_multiplier:g}, ration {_p(a.ppu_friction, 0)}. " + f(by["Pay per use"])),

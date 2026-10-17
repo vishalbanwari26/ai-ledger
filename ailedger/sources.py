@@ -116,7 +116,7 @@ def _entries(a: an.Assumptions) -> list[dict]:
     add("routine_share", G1, "Share of tokens that are routine, by department",
         ", ".join(f"{k} {_pct(v)}" for k, v in an.ROUTINE_SHARE.items()), "assumption", "Model routing estimate",
         "A planning guess: how much of each department's use is summaries, drafts and lookups a smaller model could do.",
-        caveat="Measure it on your own traffic before relying on it.")
+        caveat="Measure it on your own traffic before relying on it.", current=", ".join(f"{k} {_pct(v)}" for k, v in an.routine_shares(a).items()))
     add("ppu_multiplier", G1, "List price of tokens without a seat plan, as a multiple of the seat-plan rate", f"{d0.ppu_multiplier:g}x", "assumption",
         "The pay-per-use policy and its break-even price", "A placeholder. The page shows the break-even multiplier, which matters more than this value.",
         ["claude-plans"], "Seat plans bundle usage and pay-as-you-go does not, so the multiple depends on your contract. Get a real quote.",
@@ -127,7 +127,7 @@ def _entries(a: an.Assumptions) -> list[dict]:
         "Fixed budget and token-cap policies: value kept = (cap / usage)^elasticity",
         "0 means no loss, 1 means value falls in step with usage. Half is a middle guess.", caveat="Not measured.", slider="elasticity", current=f"{a.elasticity:g}")
     add("fixed_cap", G1, "Token cap in the fixed-budget policy", f"${fixed.flat_cap:,.0f} per person a month", "judgement",
-        "The fixed-budget policy", "A round figure near what a heavy user spends in the demo data.")
+        "The fixed-budget policy", "A round figure near what a heavy user spends in the demo data.", current=f"${a.fixed_cap:,.0f} per person a month")
 
     # ----- how the effect is measured
     add("windows", G2, "Months used as baseline and as the measured window", f"first {d0.pre_months} and last {d0.window_months}", "design",
@@ -151,15 +151,15 @@ def _entries(a: an.Assumptions) -> list[dict]:
     # ----- rules of thumb
     add("high_spend", G3, "A seat is 'high spend' above this multiple of its peers' median spend", f"{an.HIGH_SPEND_MULT:g}x", "judgement",
         "High-spend seats, the above-norm spend in the headline", "Peers are people of the same department and level; the rule also needs a negative ROI.",
-        caveat="A flag to start a conversation, not a verdict. Precision is about 0.78 in the stress test.", slider=None)
+        caveat="A flag to start a conversation, not a verdict. Precision is about 0.78 in the stress test.", slider=None, current=f"{a.high_spend_mult:g}x")
     add("peer_percentile", G3, "Percentile of ROI-positive peers' spend used as the token cap", _pct(an.PEER_PERCENTILE), "judgement",
-        "Token caps, the ceiling per active person, above-norm spend", "Generous enough that most heavy-but-productive users sit under it.")
+        "Token caps, the ceiling per active person, above-norm spend", "Generous enough that most heavy-but-productive users sit under it.", current=_pct(a.peer_percentile))
     add("min_cohort", G3, "Smallest peer group that is compared on its own", f"{d0.min_cohort} people", "design",
         "Peer norms, caps and control groups", "Below this a group falls back to its whole department.", ["doc-robustness"])
     add("min_group", G3, "Smallest group ever shown", f"{d0.min_group} people", "design", "Every list, action and chart that groups people",
         "So no figure points at one person. Smaller groups are merged and then hidden.")
     add("drift", G3, "Monthly spend jump that raises a drift alert", f"{_pct(an.DRIFT_ALERT)} and at least ${an.DRIFT_MIN_DOLLARS:,.0f}", "judgement",
-        "The drift alerts on spend over time", "Large enough to ignore ordinary variation.")
+        "The drift alerts on spend over time", "Large enough to ignore ordinary variation.", current=f"{_pct(a.drift_alert)} and at least ${a.drift_min_dollars:,.0f}")
     add("learning_floor", G3, "Levels never capped below the department cap", ", ".join(an.LEARNING_LEVELS), "design",
         "Token caps by level", "Dollar ROI depends on hourly rate, so a peer norm would understate what learners need. Two studies also found less experienced people gain more.",
         ["study:brynjolfsson-2023", "study:cui-2025"])
@@ -216,5 +216,6 @@ ENTRY_FIELDS = {
     "idle_sessions": "idle_sessions", "seat_savings_realized": "seat_savings_realized", "friction": "ppu_friction",
     "min_cohort": "min_cohort", "min_group": "min_group", "adjust_pretrend": "pretrend", "ppu_multiplier": "ppu_multiplier",
     "ppu_friction": "ppu_friction", "cheap_price_per_m": "cheap_token_price", "quality_penalty": "quality_penalty",
-    "value_json": "value_unit",
+    "value_json": "value_unit", "high_spend_mult": "high_spend", "peer_percentile": "peer_percentile", "fixed_cap": "fixed_cap",
+    "drift_alert": "drift", "drift_min_dollars": "drift", "routine_json": "routine_share",
 }

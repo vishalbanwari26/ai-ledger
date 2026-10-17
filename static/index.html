@@ -70,7 +70,7 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
   <h1>AI Ledger</h1>
   <p class="sub">Is your AI spend paying off, and how should each team's budget work? Powered by NVIDIA Nemotron on Nebius Token Factory.</p>
 
-    <details class="card" id="settings"><summary style="cursor:pointer;color:var(--text)"><b>Data and assumptions</b> <span class="mute">(sliders change every number)</span> <span class="pill vflag" hidden style="color:var(--warn)">custom value definition</span></summary><div style="margin-top:12px">
+    <details class="card" id="settings"><summary style="cursor:pointer;color:var(--text)"><b>Data and assumptions</b> <span class="mute">(sliders change every number)</span> <span class="pill vflag" hidden style="color:var(--warn)">custom value definition</span> <span class="pill rflag" hidden style="color:var(--warn)">custom rules</span></summary><div style="margin-top:12px">
     <div class="row">
       <div><label>Data</label><span id="src" class="pill">synthetic company</span></div>
       <input id="file" type="file" accept=".csv" hidden>
@@ -88,7 +88,7 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
 
   <nav class="tabs" id="tabs">
     <button data-tab="overview" class="on">Overview</button><button data-tab="waste">Waste and actions</button>
-    <button data-tab="budget">Budget policy</button><button data-tab="value">Your value</button><button data-tab="real">Is the return real?</button>
+    <button data-tab="budget">Budget policy</button><button data-tab="value">Your value</button><button data-tab="rules">Rules</button><button data-tab="real">Is the return real?</button>
     <button data-tab="math">Show the math</button><button data-tab="ask">Ask</button><button data-tab="evidence">Evidence</button><button data-tab="sources">Sources</button><button data-tab="glossary">Glossary</button></nav>
 
   <div class="tab" id="tab-overview">
@@ -147,6 +147,17 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
       <textarea id="vjson" rows="8" spellcheck="false" style="font-family:ui-monospace,Menlo,monospace;font-size:12px;margin-top:8px"></textarea>
       <div class="row" style="margin-top:8px"><button class="ghost" onclick="applyValueJson()">Apply JSON</button><button class="ghost" onclick="downloadValue()">Download</button></div>
       <p class="note">Keys are department names or "*". Fields: mode ("time" or "unit"), value_per_unit, hours_per_unit, hourly_rate, benefit_per_user.</p></details>
+  </div>
+  <div class="tab" id="tab-rules" hidden>
+    <div class="card"><h2>The tool's judgement calls, as settings</h2>
+      <p style="margin:0 0 8px">These are rules of thumb built into the tool: when a seat counts as unused, what counts as high spend, how many months to measure, what a fixed budget caps. Change them to match how your organization works. Each shows its default and where it comes from (ⓘ). Risky settings are allowed but come with a warning that says what the stress tests found.</p>
+      <p class="note" style="margin:0">The sliders in "Data and assumptions" cover the value share, elasticity, the cheaper model's price and the pay-per-use price. Value and output are on the Your value tab.</p></div>
+    <div id="rulebox"></div>
+    <div class="card"><h2>Share of tokens that are routine work, by department</h2>
+      <div class="scroll"><table id="rtab"></table></div>
+      <p class="note">Used by the model-routing estimate: how much of each department's use is summaries, drafts and lookups that a smaller model could do. Measure it on your own traffic before relying on it.</p></div>
+    <div class="card"><div class="row"><button onclick="applyRules()">Apply</button><button class="ghost" onclick="resetRules()">Back to defaults</button><span id="rmsg" class="mute"></span></div>
+      <div id="rwarn" class="warn" style="margin-top:8px"></div><div id="rerr" class="err"></div></div>
   </div>
   <div class="tab" id="tab-real" hidden>
   <div class="card chart" id="c-index"></div>
@@ -337,8 +348,8 @@ const GL=[
   r=>{const e=r.budgets.Engineering||Object.values(r.budgets)[0];const m=e.token_cap_by_level||{};return `If juniors alone would get $50 but the department cap is ${usd(e.recommended_token_cap)}, juniors get <b>${usd(e.recommended_token_cap)}</b>. In this data: junior ${m.junior?usd(m.junior):'n/a'}.`}],
  ['The budget','Model routing','Sending routine tasks (summaries, drafts, lookups) to a cheaper open model such as a smaller Nemotron, and keeping the large model for hard problems.',
   r=>`Moving routine tokens from $${r.routing.frontier_price.toFixed(2)} to $${r.routing.cheap_price.toFixed(2)} per 1M saves <b>${usd(r.routing.saving)}</b> a month, minus <b>${usd(r.routing.value_at_risk)}</b> of value put at risk, net <b>${usd(r.routing.net_gain)}</b>.`],
- ['The budget','Drift alert','A flag when a department\'s monthly spend jumps by more than 15% over the previous month. It often means a new rollout or an automated agent running too much.',
-  r=>{const a=r.trend.alerts[0];return a?`In this data: ${a.department} rose <b>${pct(a.change)}</b> in ${a.month} (${usd(a.previous)} to ${usd(a.latest)}).`:'In this data no department rose more than 15%.'}],
+ ['The budget','Drift alert','A flag when a department\'s monthly spend jumps by more than a set share (15% by default) over the previous month. It often means a new rollout or an automated agent running too much.',
+  r=>{const a=r.trend.alerts[0];return a?`In this data: ${a.department} rose <b>${pct(a.change)}</b> in ${a.month} (${usd(a.previous)} to ${usd(a.latest)}).`:`In this data no department rose more than ${pct(r.trend.threshold)}.`}],
 
  ['Trust and fairness','Measured, estimated, assumed, judgement','Measured: counted from data. Estimated: computed with a range. Assumed: a slider you can move. Judgement: a choice made in the tool, shown so you can disagree.',
   r=>`Sessions per month are <b>measured</b>. The AI effect is <b>estimated</b>. Realization is <b>assumed</b>. "High spend means above the 75th percentile of peers" is <b>judgement</b>.`],
@@ -425,7 +436,7 @@ function render(r){R=r;setTimeout(()=>{renderOverview();renderGlossary();renderV
   $('levels').innerHTML='<tr><th>Level</th><th class=n>People</th><th class=n>Cost/head</th><th class=n>Value/mo</th><th>ROI (95% range)</th></tr>'+
    Object.entries(r.summary.levels).map(([k,v])=>`<tr><td>${k}</td><td class=n>${v.headcount}</td><td class=n>${usd(v.cost_per_head)}</td><td class=n>${usd(v.monthly_value)}</td><td>${roiRange(v)}</td></tr>`).join('');
   const t=r.trend;
-  $('alerts').innerHTML=t.alerts.length?t.alerts.map(a=>`<p class=warn>Drift: ${a.department} spend rose ${pct(a.change)} in ${a.month} (${usd(a.previous)} to ${usd(a.latest)}). Check for new rollout or runaway agents.</p>`).join(''):'<p class=mute>No department rose more than 15% month over month.</p>';
+  $('alerts').innerHTML=t.alerts.length?t.alerts.map(a=>`<p class=warn>Drift: ${a.department} spend rose ${pct(a.change)} in ${a.month} (${usd(a.previous)} to ${usd(a.latest)}). Check for new rollout or runaway agents.</p>`).join(''):`<p class=mute>No department rose more than ${pct(t.threshold)} (and at least ${usd(t.min_dollars)}) month over month.</p>`;
   $('trend').innerHTML='<tr><th>Department</th>'+t.months.map(m=>`<th class=n>${m}</th>`).join('')+'</tr>'+
    Object.entries(t.by_department).map(([k,v])=>`<tr><td>${k}</td>${v.map(n=>`<td class=n>${usd(n)}</td>`).join('')}</tr>`).join('')+
    `<tr><td><b>Company</b></td>${t.company.map(n=>`<td class=n><b>${usd(n)}</b></td>`).join('')}</tr>`;
@@ -440,7 +451,7 @@ function sumActs(){const ks=[...document.querySelectorAll('.ak:checked')];const 
   $('actsum').textContent=ks.length?`${ks.length} approved: ${usd(s)}/mo, ${usd(s*12)}/yr`:'Nothing approved yet'}
 function dl(){const ids=[...document.querySelectorAll('.ak:checked')].map(k=>k.dataset.id).join(',');
   if(!ids){$('uerr').textContent='Tick at least one action first.';return}$('uerr').textContent='';location.href='/api/actions.csv?ids='+ids}
-async function load(){render(await j('/api/report'));loadRob();loadMath(mdept);loadEvidence()}
+async function load(){render(await j('/api/report'));loadRob();loadMath(mdept);loadEvidence();loadRules()}
 
 const pp1=n=>(n*100).toFixed(1)+'%';
 function renderBench(g){const be=g.breakeven,c=be.company;if(c.breakeven==null){$('betext').textContent='No users yet, so there is no break-even effect.';return}
@@ -508,6 +519,30 @@ function applyValue(){sendValue(collectValue())}
 function resetValue(){sendValue({})}
 function applyValueJson(){try{sendValue(JSON.parse($('vjson').value||'{}'))}catch(e){$('verr').textContent='That is not valid JSON.'}}
 function downloadValue(){const b=new Blob([JSON.stringify(R&&R.value?R.value.defs:{},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='ai-ledger-value-definition.json';a.click();URL.revokeObjectURL(a.href)}
+
+let RULES_INFO=null;
+function pctShow(x){return Math.round(x*10000)/100}
+function renderRules(g){RULES_INFO=g;const box=$('rulebox');box.replaceChildren();let grp='',card=null,tb=null;
+  for(const r of g.rules){if(r.group!==grp){grp=r.group;card=document.createElement('div');card.className='card';const h=document.createElement('h2');h.textContent=grp;card.appendChild(h);tb=document.createElement('table');card.appendChild(tb);box.appendChild(card)}
+    const tr=tb.insertRow();const l=tr.insertCell();l.textContent=r.label;const rf=document.createElement('span');rf.innerHTML=RF(r.ref);l.appendChild(rf.firstChild);
+    const c=tr.insertCell();const i=document.createElement('input');i.className='vin num';i.dataset.rule=r.field;i.dataset.type=r.type;
+    if(r.type==='bool'){i.type='checkbox';i.checked=!!r.current;i.style.width='auto'}else{i.type='number';i.step=r.type==='pct'?'any':r.step;i.min=r.type==='pct'?r.min*100:r.min;i.max=r.type==='pct'?r.max*100:r.max;i.value=r.type==='pct'?pctShow(r.current):r.current}
+    c.appendChild(i);if(r.type==='pct'){const u=document.createElement('span');u.className='mute';u.textContent=' %';c.appendChild(u)}if(r.type==='money'){i.style.width='110px'}
+    const d=tr.insertCell();d.className='mute';d.textContent='default '+(r.type==='bool'?(r.default?'on':'off'):r.type==='pct'?pctShow(r.default)+'%':r.type==='money'?'$'+r.default:r.default);
+    if(r.current!==r.default)d.style.color='var(--warn)'}
+  const t=$('rtab');t.replaceChildren();const h=t.insertRow();['Department','Routine share (%)','Default'].forEach(x=>{const th=document.createElement('th');th.textContent=x;h.appendChild(th)});
+  for(const x of g.routine){const tr=t.insertRow();tr.insertCell().textContent=x.department;const c=tr.insertCell();const i=document.createElement('input');i.type='number';i.min=0;i.max=100;i.step='any';i.className='vin num';i.dataset.routine=x.department;i.value=pctShow(x.current);c.appendChild(i);const d=tr.insertCell();d.className='mute';d.textContent=pctShow(x.default)+'%';if(x.current!==x.default)d.style.color='var(--warn)'}
+  document.querySelectorAll('.rflag').forEach(e=>e.hidden=!g.customized)}
+async function loadRules(){try{renderRules(await j('/api/rules'))}catch(e){}}
+function collectRules(){const values={};document.querySelectorAll('#rulebox [data-rule]').forEach(i=>{const t=i.dataset.type;if(t==='bool')values[i.dataset.rule]=i.checked;else if(i.value!==''){const v=parseFloat(i.value);values[i.dataset.rule]=t==='pct'?v/100:v}});
+  const routine={};document.querySelectorAll('#rtab [data-routine]').forEach(i=>{if(i.value!=='')routine[i.dataset.routine]=parseFloat(i.value)/100});return{values,routine}}
+async function sendRules(body){$('rerr').textContent='';$('rwarn').textContent='';$('rmsg').textContent='';
+  try{const rep=await j('/api/rules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});render(rep);loadRob();loadMath(mdept);loadEvidence();loadRules();
+    $('rmsg').textContent=body.reset?'Back to the defaults.':'Applied. Every number now uses these rules.';$('rwarn').textContent=(rep.rule_warnings||[]).join(' ')}
+  catch(e){$('rerr').textContent=e.message}}
+function applyRules(){const c=collectRules();const d=RULES_INFO?Object.fromEntries(RULES_INFO.routine.map(x=>[x.department,x.default])):{};
+  const routine={};for(const [k,v] of Object.entries(c.routine))if(Math.abs(v-(d[k]??v))>1e-9)routine[k]=v;sendRules({values:c.values,routine})}
+function resetRules(){sendRules({reset:true})}
 async function loadEvidence(){try{const g=await j('/api/evidence');window.EVIDENCE=g;const c=g.comparison;
   $('evtext').textContent=c.text;$('evctx').replaceChildren(...c.context.map(t=>{const li=document.createElement('li');li.textContent=t;return li}));
   $('evnote').textContent='Numbers were read from the sources linked below on '+g.verified_on+'. Where a figure could not be confirmed from a primary source it is marked, or left out.';
@@ -543,8 +578,8 @@ let tm;function sliders(){$('rv').textContent=real.value+'%';$('ev').textContent
    body:JSON.stringify({realization:real.value/100,elasticity:elas.value/100,cheap_price_per_m:cheap.value/100,ppu_multiplier:ppu.value/100})}));loadRob();loadMath(mdept);loadEvidence()}catch(e){$('uerr').textContent=e.message}},250)}
 real.oninput=elas.oninput=cheap.oninput=ppu.oninput=sliders;
 $('file').onchange=async e=>{$('uerr').textContent='';const f=new FormData();f.append('file',e.target.files[0]);
-  try{render(await j('/api/upload',{method:'POST',body:f}));loadRob();loadMath(mdept);loadEvidence();$('src').textContent=e.target.files[0].name}catch(err){$('uerr').textContent=err.message}};
-async function reset(){$('uerr').textContent='';render(await j('/api/reset',{method:'POST'}));loadRob();loadMath(mdept);loadEvidence();$('src').textContent='synthetic company';real.value=50;elas.value=50;cheap.value=60;ppu.value=160;$('rv').textContent='50%';$('ev').textContent='0.5';$('cv').textContent='0.60';$('pv').textContent='1.6x'}
+  try{render(await j('/api/upload',{method:'POST',body:f}));loadRob();loadMath(mdept);loadEvidence();loadRules();$('src').textContent=e.target.files[0].name}catch(err){$('uerr').textContent=err.message}};
+async function reset(){$('uerr').textContent='';render(await j('/api/reset',{method:'POST'}));loadRob();loadMath(mdept);loadEvidence();loadRules();$('src').textContent='synthetic company';real.value=50;elas.value=50;cheap.value=60;ppu.value=160;$('rv').textContent='50%';$('ev').textContent='0.5';$('cv').textContent='0.60';$('pv').textContent='1.6x'}
 async function brief(){$('bb').disabled=true;$('brief').textContent='Thinking…';
   try{const b=await j('/api/brief');$('brief').textContent=b.brief+'\n\nmodel: '+b.model}catch(e){$('brief').innerHTML='<span class=err></span>';$('brief').firstChild.textContent=e.message}
   $('bb').disabled=false}

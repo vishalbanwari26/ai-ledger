@@ -17,6 +17,7 @@ from . import analysis as an
 from . import data
 from . import bench
 from . import evidence as ev
+from . import rules
 from . import sources
 from .llm import Analyst
 
@@ -61,7 +62,7 @@ def _report(st: Analyst) -> dict:
     a = st.assumptions
     return dict(summary=an.summary(st.ds, a), policies=an.compare_policies(st.ds, a),
                 budgets=an.budget_recommendations(st.ds, a), waste=an.waste(st.ds, a), plan=an.plan_savings(st.ds, a), output_index=an.output_index(st.ds, a),
-                actions=an.actions(st.ds, a), routing=an.routing(st.ds, a), trend=an.trend(st.ds),
+                actions=an.actions(st.ds, a), routing=an.routing(st.ds, a), trend=an.trend(st.ds, a.drift_alert, a.drift_min_dollars),
                 validation=an.validate(st.ds, a), policy_assumptions=an.POLICY_ASSUMPTIONS, ppu_breakeven=an.pay_per_use_breakeven(st.ds, a),
                 value=an.value_info(st.ds, a),
                 unit_names={d: an.unit_label(st.ds, a, d) for d in sorted({r["department"] for r in st.ds.rows})}, rows=len(st.ds.rows))
@@ -130,6 +131,39 @@ def set_value(body: ValueBody, request: Request, response: Response):
     return _report(st)
 
 
+class RulesBody(BaseModel):
+    values: dict = {}
+    routine: dict | None = None
+    reset: bool = False
+
+
+def _depts(st: Analyst) -> list[str]:
+    return sorted({r["department"] for r in st.ds.rows})
+
+
+@app.get("/api/rules")
+def get_rules(request: Request, response: Response):
+    st = get_state(request, response)
+    return rules.info(st.assumptions, _depts(st))
+
+
+@app.post("/api/rules")
+def set_rules(body: RulesBody, request: Request, response: Response):
+    """Change the tool's judgement calls for this session. Bad values are refused; risky ones come back as warnings."""
+    st = get_state(request, response)
+    d0 = an.Assumptions()
+    if body.reset:
+        st.assumptions = replace(st.assumptions, **{r["field"]: getattr(d0, r["field"]) for r in rules.RULES}, routine_json="")
+        return _report(st) | dict(rule_warnings=[])
+    months = len({r["month"] for r in st.ds.rows})
+    try:
+        changes, warnings = rules.validate(body.values, body.routine, st.assumptions, _depts(st), months)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    st.assumptions = replace(st.assumptions, **changes)
+    return _report(st) | dict(rule_warnings=warnings)
+
+
 @app.get("/api/explain")
 def explain(request: Request, response: Response, department: str = ""):
     st = get_state(request, response)
@@ -156,7 +190,7 @@ async def upload(request: Request, response: Response, file: UploadFile = File(.
         raise HTTPException(413, "CSV larger than 5 MB")
     try:
         st.ds = data.load_csv(raw.decode("utf-8-sig"))
-        st.assumptions = replace(st.assumptions, value_json="")  # a definition keyed to the old departments would mislead
+        st.assumptions = replace(st.assumptions, value_json="", routine_json="")  # keyed to the old departments: would mislead
     except (ValueError, KeyError, UnicodeDecodeError) as e:
         raise HTTPException(422, str(e))
     return _report(st)

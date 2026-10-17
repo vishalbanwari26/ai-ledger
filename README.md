@@ -95,6 +95,23 @@ prints the HTTPS URL. The endpoint has no token auth so reviewers can open it; t
 (`LEDGER_LLM_PER_HOUR`, default 120) and gives every visitor their own session, so uploads never leak between people.
 Use a key created only for the demo and rotate it afterwards. Stop or delete the endpoint when judging ends.
 
+## What you can customize
+
+| What | Where | Notes |
+|---|---|---|
+| Your data | Upload CSV | Optional `level`, `unit_name` and extra `outcome_<metric>` columns |
+| What one unit of output is called, and how several metrics count towards output | Your value tab | A weighted mix is a new unit, so it must be priced |
+| What a unit of output is worth (hours x rate, or your dollars per unit) and an optional benefit per user | Your value tab | Per department, with a default for all |
+| Share of extra output counted as real, elasticity, cheaper model price, pay-per-use price | Sliders in "Data and assumptions" | |
+| When a seat is unused, what counts as high spend, the peer percentile for caps, the smallest peer group | Rules tab | Out-of-range values are refused |
+| Baseline and measured months, the pre-rollout adjustment | Rules tab | Risky settings come with a warning from the stress tests |
+| Seat savings realized, rationing, quality penalty, the fixed-budget cap | Rules tab | |
+| Drift-alert threshold, routine share of tokens by department | Rules tab | |
+| Smallest group ever shown | Rules tab | Can be raised, never below 10 |
+
+Not yet customizable: your own budget policies, excluding people or departments, rollout dates by team, extra cost lines such as
+training, currency, and saved side-by-side scenarios.
+
 ## Limits
 
 - The demo company is synthetic. Value is an estimate built on stated assumptions; the sliders show how sensitive the
