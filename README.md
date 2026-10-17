@@ -15,6 +15,7 @@ data, and lets you question the results in plain English. Answers come from NVID
   A department whose range includes zero is labelled uncertain, and gets "review", never "restrict".
 - **Shows its working:** a "Show the math" section walks each department through nine steps with its own numbers
   (cost, growth, control group, range, dollars, ROI, break-even, recoverable spend), plus how each budget policy is computed.
+- **Explains every term:** a Glossary tab with plain definitions and worked examples that use the live numbers.
 - **Separates fact from opinion:** every number is labelled measured, estimated, assumed or judgement, and each decision is
   re-run in 180 assumption scenarios to show which hold and which depend on assumptions.
 - **Checks that adopters were not already ahead:** compares adopters and non-adopters in the months before rollout and

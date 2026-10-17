@@ -47,6 +47,9 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
 .tiles{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 .dt{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px}.dt b{display:block;font-size:20px;font-variant-numeric:tabular-nums}
 .dt.c{border-left:3px solid var(--good)}.dt.u{border-left:3px solid var(--warn)}.dt.n{border-left:3px solid var(--bad)}
+.gg{margin:18px 0 8px;font-size:13px;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}
+.gl{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}.gt{margin:0}.gt h3{margin:0 0 4px;font-size:15px}.gt p{margin:0 0 8px;color:var(--text)}
+.ex{background:var(--bg);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;color:var(--mute);font-size:13px}.ex b{color:var(--text)}
 .warn{color:var(--warn)}.mute{color:var(--mute)}
 </style>
 </head>
@@ -74,7 +77,7 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
   <nav class="tabs" id="tabs">
     <button data-tab="overview" class="on">Overview</button><button data-tab="waste">Waste and actions</button>
     <button data-tab="budget">Budget policy</button><button data-tab="real">Is the return real?</button>
-    <button data-tab="math">Show the math</button><button data-tab="ask">Ask</button></nav>
+    <button data-tab="math">Show the math</button><button data-tab="ask">Ask</button><button data-tab="glossary">Glossary</button></nav>
 
   <div class="tab" id="tab-overview">
     <div class="grid three">
@@ -141,6 +144,12 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
     <div id="msteps" class="grid"></div>
     <h2 style="margin-top:16px">Budget policies</h2><div id="mpols" class="grid"></div></div>
   </div>
+  <div class="tab" id="tab-glossary" hidden>
+    <div class="card"><label for="gsearch">Search terms</label>
+      <input id="gsearch" type="search" placeholder="e.g. unused seat, bill risk, control group" oninput="renderGlossary()" style="width:100%;max-width:420px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font:inherit">
+      <p class="note">Plain definitions with a worked example. Where an example says "in this data", it uses this company's live numbers and changes with the sliders.</p></div>
+    <div id="gl"></div>
+  </div>
   <div class="tab" id="tab-ask" hidden>
     <div class="card"><h2>Ask the analyst</h2>
     <div class="chips" id="chips"></div>
@@ -158,6 +167,85 @@ const roiRange=v=>`${x(v.roi)} <span class="mute">(${x(v.roi_low)} to ${x(v.roi_
 let R;
 
 let ROB=null;
+const GL=[
+ ['The money','Unused seat','A paid AI seat used fewer than 3 times a month on average over the last 3 months. It usually means the tool does not fit the person\'s work, or nobody explained it. It is about the setup, not the person.',
+  r=>`A $40 seat with 1 session a month is unused. In this data: <b>${r.waste.idle_seats}</b> unused seats, worth <b>${usd(r.waste.idle_monthly)}</b> a month.`],
+ ['The money','High-spend seat','A seat whose token spend is above what colleagues in the same role and level spend, and whose estimated return is below its cost. It is a reason to check training and workflow fit, not a verdict on anyone.',
+  r=>{const e=r.budgets.Engineering||Object.values(r.budgets)[0],c=(e.token_cap_by_level||{}).mid;return `A mid-level engineer spending far above ${c?usd(c)+' a month':'the peer norm'} with no matching gain in output. In this data: <b>${r.waste.over_people}</b> seats, up to <b>${usd(r.waste.over_monthly)}</b> a month above peer norms.`}],
+ ['The money','Recoverable spend: solid and potential','Solid is the saving from unused seats, which comes straight from usage. Potential is spend above peer norms on high-spend seats: cutting it can cost output, so start with training.',
+  r=>`In this data: solid <b>${usd(r.waste.idle_monthly)}</b> + potential <b>${usd(r.waste.over_monthly)}</b> = <b>${usd(r.waste.total_monthly)}</b> a month (${usd(r.waste.total_annual)} a year).`],
+ ['The money','Seat savings realized','Contracts have minimums and notice periods, so reassigning a seat does not always save its full price. We count 80% by default (slider).',
+  r=>`Reassigning a $60 seat saves 0.8 x $60 = <b>$48</b> a month.`],
+ ['The money','Cost per head: now, expected, ceiling','Now is the average cost over everyone, including unused seats. Expected is the average under the recommended plan. Ceiling is the most one active person may use (seat plus token cap). A ceiling is higher than an average on purpose.',
+  r=>{const e=r.budgets.Engineering?['Engineering',r.budgets.Engineering]:Object.entries(r.budgets)[0];return `${e[0]}: now <b>${usd(e[1].current_per_head)}</b>, expected <b>${usd(e[1].expected_per_head)}</b>, ceiling <b>${usd(e[1].ceiling_per_head)}</b> per active person.`}],
+
+ ['The return','Baseline','A person\'s own output in the first two months, before AI rollout. Every later month is compared with it, as a ratio, so an intern and a senior are comparable.',
+  r=>`If someone merged 13 PRs a month before rollout and 14.2 after, growth is 14.2 / 13 - 1 = <b>9.2%</b>.`],
+ ['The return','Value (estimated dollars)','Time saved turned into money: realization x effect x baseline output x hours per unit x hourly rate. It is an estimate, not a measurement.',
+  r=>`0.5 x 9.2% x 13 units x 3 hours x $86 = <b>$154</b> a month for one typical user.`],
+ ['The return','Realization','The share of the extra output that is real, bankable value. Extra output is not always extra revenue. It is a slider: the main opinion in the tool.',
+  r=>`If extra output is worth $200 on paper and realization is 50%, we count <b>$100</b>.`],
+ ['The return','Dollars back per $1 (ROI)','How much value comes back for each dollar spent. ROI = (value - cost) / cost, so $1.33 back per $1 is an ROI of 0.33. Below $1.00 back means it costs more than it returns.',
+  r=>{const c=r.summary.company;return `A user costing $116 with $154 of value: ($154 - $116) / $116 = 0.33, so <b>$1.33 back per $1</b>. In this data the company is at <b>$${(1+c.roi).toFixed(2)} back per $1</b>.`}],
+ ['The return','Net value','Value minus cost, in dollars. Use it to compare policies, because the ratio rises whenever you simply spend less.',
+  r=>{const p=r.policies.find(x=>x.name==='Pay per use'),v=r.policies.find(x=>x.name==='Variable by role');return `A policy that spends $10 and returns $20 has a higher ratio (1.0) than one that spends $100 and returns $150 (0.5), but the second nets $50 vs $10. In this data: pay per use nets <b>${usd(p.net)}</b>, variable by role <b>${usd(v.net)}</b>.`}],
+ ['The return','Break-even credit','The share of the estimated gain that must be real for a team to pay for itself. Low is good: a team that breaks even at 15% credit is safe even if we are too optimistic.',
+  r=>{const e=Object.entries(r.summary.departments).find(([k,v])=>v.break_even_realization)||[];return `Break-even credit = 50% x cost $116 / value $154 = <b>38%</b>. In this data${e[0]?`, ${e[0]} is at <b>${pct(e[1].break_even_realization)}</b>`:''}.`}],
+
+ ['The evidence','Control group','People who did not use AI. Their output shows what happens anyway: a busy season, a new product. We subtract it so AI is not credited with it.',
+  r=>{const c=r.summary.company;return `In this data, non-users grew <b>${pp(c.control_growth)}</b> over the same months, so that much of the growth is not AI.`}],
+ ['The evidence','Naive lift vs AI effect','Naive lift is growth of AI users alone. The AI effect is (1 + user growth) / (1 + control growth) - 1. A before-and-after check without a control group credits AI with everything.',
+  r=>{const c=r.summary.company;return `Users grew <b>${pp(c.naive_lift)}</b>, others <b>${pp(c.control_growth)}</b>, so the AI effect is (1 + ${pp(c.naive_lift)}) / (1 + ${pp(c.control_growth)}) - 1 = <b>${pp(c.did_lift)}</b>.`}],
+ ['The evidence','Parallel-trends check','Before rollout, people who later adopted AI and people who did not should have grown alike. If adopters were already pulling ahead, part of the apparent gain is self-selection, so we remove that gap and widen the ranges.',
+  r=>{const s=r.summary.company.selection;return s.tested?`In this data the gap before rollout was <b>${pp(s.gap_per_month)}</b> a month (${s.significant?'significant: a warning is shown':'within noise: check passed'}).`:'This check needs two months before rollout.'}],
+ ['The evidence','95% range and confidence','The range in which the true value very likely falls. "Clear" means the whole range is on one side of break-even. "Not proven" means the range includes break-even, so the data cannot say, and the tool does not guess.',
+  r=>{const e=r.summary.departments.Engineering?['Engineering',r.summary.departments.Engineering]:Object.entries(r.summary.departments)[0];return `${e[0]}: AI effect <b>${pp(e[1].did_lift)}</b>, range ${pp(e[1].ci_low)} to ${pp(e[1].ci_high)}. ROI ${e[1].roi.toFixed(2)}, range ${e[1].roi_low.toFixed(2)} to ${e[1].roi_high.toFixed(2)}: <b>${e[1].confidence==='clear'?'clear':'not proven'}</b>.`}],
+ ['The evidence','Shrinkage','Single-person estimates are noisy, so each is pulled toward the department average. w says how much of the individual number to keep. Nobody is ranked on their own number.',
+  r=>`If one person's number is +30%, the department averages +9% and w = 0.4: 9% + 0.4 x (30% - 9%) = <b>17.4%</b>.`],
+ ['The evidence','Precision and recall (self-check)','On the synthetic company the truth is known, so the tool scores itself. Precision: of the seats flagged, how many really are. Recall: of those that really are, how many were found.',
+  r=>`If it flags 100 unused seats and 98 really are unused, precision is <b>98%</b>. If 120 really are unused and it found 98, recall is <b>82%</b>.`],
+
+ ['The budget','Status quo','Everyone keeps a seat and token spend is uncapped. The baseline every other policy is compared with.',
+  r=>{const p=r.policies.find(x=>x.name==='Status quo');return `In this data: cost <b>${usd(p.monthly_cost)}</b> a month, net <b>${usd(p.net)}</b>.`}],
+ ['The budget','Fixed budget','Everyone keeps a seat and token spend is capped at the same dollar amount ($60 here). Predictable, but it treats very different roles alike.',
+  r=>{const p=r.policies.find(x=>x.name==='Fixed budget');return `In this data: net <b>${usd(p.net)}</b>, bill risk <b>+${pct(p.bill_risk)}</b>.`}],
+ ['The budget','Pay per use','No seats: you pay for tokens at list price. Cheaper when many seats sit unused, but the bill moves with usage and people may ration use when they see a meter.',
+  r=>{const p=r.policies.find(x=>x.name==='Pay per use');return `In this data: net <b>${usd(p.net)}</b>, but the bill can rise <b>${pct(p.bill_risk)}</b> in a peak month.`}],
+ ['The budget','Variable by role','Seats only for people who use them. Each department and level gets a token allowance set from what similar colleagues spend, pooled across the department. Saves almost only through unused seats; the caps are a guardrail.',
+  r=>`In this data: saves <b>${usd(r.plan.company.saving)}</b> a month, of which <b>${usd(r.plan.company.from_seats)}</b> from seats and <b>${usd(r.plan.company.from_caps)}</b> from caps.`],
+ ['The budget','Bill risk','How much worse the bill gets if everyone spends at their own highest month. bill risk = cost at peak / cost - 1. Lower is more predictable.',
+  r=>{const p=r.policies.find(x=>x.name==='Pay per use');return `Normal month $75,000, everyone-at-peak $117,000: 117 / 75 - 1 = <b>56%</b>. In this data pay per use is <b>${pct(p.bill_risk)}</b>.`}],
+ ['The budget','List-price multiplier and break-even price','How much more tokens cost per unit without a seat plan. It is an assumption you should replace with a real quote. The break-even price is where pay per use stops being the best policy.',
+  r=>`If the seat plan prices tokens at $5 per 1M and list is $8, the multiplier is 1.6x. In this data pay per use is best only while the multiplier stays under <b>${r.ppu_breakeven.multiplier||'a limit'}x</b>; you assumed <b>${r.ppu_breakeven.assumed}x</b>.`],
+ ['The budget','Elasticity','How much value is lost when someone\'s allowance is cut. 0 means none, 1 means value falls in step with usage. A slider, not a measurement.',
+  r=>`With elasticity 0.5, cutting an allowance from $100 to $25 keeps (25 / 100)^0.5 = <b>50%</b> of that person\'s value.`],
+ ['The budget','Token cap and peer norm','The monthly token allowance for a role and level: what colleagues of the same role and level who get a positive return spend today (75th percentile). It describes use, not need.',
+  r=>{const e=r.budgets.Engineering||Object.values(r.budgets)[0];const m=e.token_cap_by_level||{};return `Engineering caps in this data: ${Object.entries(m).map(([l,c])=>l+' '+usd(c)).join(', ')||'n/a'} a month.`}],
+ ['The budget','Learning floor','Interns and juniors are never capped below the department-wide cap, because they iterate more while learning and a peer norm would understate what they need.',
+  r=>{const e=r.budgets.Engineering||Object.values(r.budgets)[0];const m=e.token_cap_by_level||{};return `If juniors alone would get $50 but the department cap is ${usd(e.recommended_token_cap)}, juniors get <b>${usd(e.recommended_token_cap)}</b>. In this data: junior ${m.junior?usd(m.junior):'n/a'}.`}],
+ ['The budget','Model routing','Sending routine tasks (summaries, drafts, lookups) to a cheaper open model such as a smaller Nemotron, and keeping the large model for hard problems.',
+  r=>`Moving routine tokens from $${r.routing.frontier_price.toFixed(2)} to $${r.routing.cheap_price.toFixed(2)} per 1M saves <b>${usd(r.routing.saving)}</b> a month, minus <b>${usd(r.routing.value_at_risk)}</b> of value put at risk, net <b>${usd(r.routing.net_gain)}</b>.`],
+ ['The budget','Drift alert','A flag when a department\'s monthly spend jumps by more than 15% over the previous month. It often means a new rollout or an automated agent running too much.',
+  r=>{const a=r.trend.alerts[0];return a?`In this data: ${a.department} rose <b>${pct(a.change)}</b> in ${a.month} (${usd(a.previous)} to ${usd(a.latest)}).`:'In this data no department rose more than 15%.'}],
+
+ ['Trust and fairness','Measured, estimated, assumed, judgement','Measured: counted from data. Estimated: computed with a range. Assumed: a slider you can move. Judgement: a choice made in the tool, shown so you can disagree.',
+  r=>`Sessions per month are <b>measured</b>. The AI effect is <b>estimated</b>. Realization is <b>assumed</b>. "High spend means above the 75th percentile of peers" is <b>judgement</b>.`],
+ ['Trust and fairness','Holds in X% of scenarios','Each decision is re-run in 180 combinations of the assumptions. "Holds" means it is true in at least 95% of them. Act on what holds; for the rest, get the missing number.',
+  r=>ROB?`In this data: ${ROB.decisions.map(d=>`"${d.claim.toLowerCase()}" holds in <b>${pct(d.holds)}</b>`).slice(0,3).join('; ')}.`:'Computing…'],
+ ['Trust and fairness','Peer group (role and level)','People are only compared with others of the same department and level, so an intern is never measured against a senior. Groups too small to be fair fall back to the whole department.',
+  r=>`A junior in Support is compared with other Support juniors, not with senior Legal counsel.`],
+ ['Trust and fairness','Minimum group size','Results are shown only for groups of 10 or more, and no individual is named, ranked or exported. Small groups are first merged within their department, then pooled across departments, and anything still under 10 is hidden.',
+  r=>`7 Legal interns and 5 Legal seniors are shown together as "Legal, all levels" (12 people). Had they totalled 8, they would be hidden.`],
+ ['Trust and fairness','Synthetic data','The demo company is generated with known patterns, so the tool can be scored against the truth. Your real data goes through the same steps, but the truth is unknown, so rely on the ranges.',
+  r=>`In this data: ${r.rows.toLocaleString()} employee-month rows. Upload your own CSV from the Data and assumptions drawer.`],
+];
+function renderGlossary(){if(!R)return;const q=($('gsearch').value||'').toLowerCase().trim();let g='',html='';
+  for(const [grp,t,d,e] of GL){let ex='';try{ex=e(R)}catch(err){ex=''}
+    if(q&&!(t+' '+d+' '+ex).toLowerCase().includes(q))continue;
+    if(grp!==g){if(g)html+='</div>';html+=`<div class="gg">${grp}</div><div class="gl">`;g=grp}
+    html+=`<div class="card gt"><h3>${t}</h3><p>${d}</p><div class="ex"><b>Example</b> · ${ex}</div></div>`}
+  $('gl').innerHTML=html?html+'</div>':'<p class="mute">No term matches that search.</p>'}
+
 const back=v=>'$'+(1+v).toFixed(2);
 function renderOverview(){if(!R)return;const r=R,c=r.summary.company,w=r.waste,d=r.summary.departments,be=r.ppu_breakeven;
   $('o1').textContent=usd(w.idle_monthly)+' a month';
@@ -187,7 +275,7 @@ document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>showTab(b.dat
 showTab((location.hash||'#overview').slice(1).replace(/[^a-z]/g,'')||'overview');
 async function j(url,opt){const r=await fetch(url,opt);const b=await r.json().catch(()=>({}));
   if(!r.ok)throw new Error(b.detail||r.statusText);return b}
-function render(r){R=r;setTimeout(renderOverview,0);const c=r.summary.company;
+function render(r){R=r;setTimeout(()=>{renderOverview();renderGlossary()},0);const c=r.summary.company;
   const w=r.waste;$('wtot').textContent=usd(w.total_monthly);
   $('wsub').textContent=`${usd(w.total_annual)} a year in total. Solid: ${w.idle_seats} unused seats, ${usd(w.idle_monthly)}/mo after contract friction. Potential: ${w.over_people} high-spend seats, ${usd(w.over_monthly)}/mo above peer norms, which may cost output if cut, so start with training.`;
   $('waste').innerHTML='<tr><th>Department</th><th class=n>Unused seats</th><th class=n>Unused-seat savings/mo</th><th class=n>High-spend seats</th><th class=n>Above-norm spend/mo</th><th class=n>Recoverable/mo</th></tr>'+
@@ -246,7 +334,7 @@ async function loadMath(d){try{const g=await j('/api/explain'+(d?('?department='
   catch(err){$('msteps').textContent='Could not load: '+err.message}}
 
 async function loadRob(){$('robnote').textContent='Computing 180 assumption scenarios…';
-  try{const g=await j('/api/robustness');ROB=g;renderOverview();const k=g.kinds;
+  try{const g=await j('/api/robustness');ROB=g;renderOverview();renderGlossary();const k=g.kinds;
    $('kinds').innerHTML=[['Measured','measured','var(--good)','Counted from your data.'],['Estimated','estimated','var(--accent)','Computed with a range.'],['Assumed','assumed','var(--warn)','Sliders. Opinion.'],['Judgement','judgement','var(--bad)','A choice we made, shown so you can disagree.']]
     .map(([t,key,col,sub])=>`<div class="card" style="margin:0"><b style="color:${col}">${t}</b> <span class=mute>${sub}</span><ul style="margin:6px 0 0;padding-left:18px">${k[key].map(i=>`<li>${i}</li>`).join('')}</ul></div>`).join('');
    const lab=h=>h>=.95?'<span class=clear>holds</span>':h<=.05?'<span class=restrict>fails</span>':'<span class=uncertain>depends</span>';

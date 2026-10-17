@@ -441,3 +441,13 @@ def test_plan_saving_reconciles_with_waste():
     assert abs(p["from_seats"] - w["idle_monthly"]) < 1.0   # seats part is exactly the unused-seat saving
     assert p["saving"] <= w["total_monthly"] + 1.0          # the plan never claims more than the headline
     assert p["hard_cap_saving"] > p["saving"] and p["hard_cap_value_lost"] > 0
+
+
+def test_glossary_covers_the_terms_used_on_the_page():
+    import pathlib
+    html = (pathlib.Path(__file__).resolve().parent.parent / "static/index.html").read_text()
+    assert 'data-tab="glossary"' in html and 'id="tab-glossary"' in html
+    for term in ["Unused seat", "High-spend seat", "Control group", "Parallel-trends check", "Break-even credit",
+                 "Bill risk", "Variable by role", "Pay per use", "Elasticity", "Realization", "Learning floor",
+                 "Shrinkage", "Model routing", "Minimum group size", "Precision and recall"]:
+        assert f"'{term}" in html, f"glossary is missing {term}"
