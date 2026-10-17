@@ -1,58 +1,76 @@
-# Demo video script (target 2:50, limit 3:00)
+# Demo video script (target 2:50, hard limit 3:00)
 
-Record the browser at 1440 wide, dark mode, default synthetic company, no individuals are shown anywhere.
-Speak plainly, no reading from the page. Check every number on screen right before recording; moving a slider changes them.
+Record the page at 1440 wide, dark mode, default synthetic company, sliders untouched. Speak plainly. Do not read the page.
+Every number below was taken from the current dashboard. Check each one on screen before you say it. Answers from the
+analyst change slightly on every run, so do a dry run.
 
-## 0:00 to 0:20  The problem
-(Screen: top of the dashboard, the red number.)
-"Companies pay for AI seats and tokens for thousands of people, and almost nobody can say whether it pays off.
-This is AI Ledger. For this 1,900 person company it found $21,800 a month of spend that returns nothing.
-That is $262,000 a year."
+## 0:00 to 0:20  The hook
+(Top of the page, the red number.)
+"Companies pay for AI seats and tokens for thousands of people. Almost nobody can say if it pays off.
+This is AI Ledger. For this 1,900 person company it finds $22,000 a month that can be recovered. $265,000 a year.
+It does not blame anyone for that. I will show you how."
 
-## 0:20 to 0:50  Where the money goes
+## 0:20 to 0:50  Where the money is
 (Scroll to the waste table.)
-"454 seats are idle. Under three sessions a month. We only count the share of a seat you can really cancel,
-because contracts have minimums. Another 244 seats have high spend with no matching gain, compared with the same role and level.
-Same level matters: an intern working on a small feature is not compared with a senior. Nobody is named: this is about how seats and budgets are set up.
-Engineering carries the most, $8,800 a month."
+"454 seats are not in use. Under three sessions a month. That is $16,000 a month, and we only count 80 percent of a
+seat, because contracts have minimums. Another 245 seats have high spend with no matching gain in output. We compare
+each one with people in the same role and level, so an intern is never measured against a senior.
+Engineering has the most, $9,000 a month. An unused seat usually means the tool does not fit the work, or nobody
+explained it. That is a setup problem, not a people problem."
 
-## 0:50 to 1:15  Act on it
-(Scroll to the actions table. Tick two actions.)
-"Every finding becomes an action with a reason. I approve two, it shows $4,000 a month, and I download the list.
-In privacy mode, groups under ten people are hidden and nobody is named."
+## 0:50 to 1:10  Act on it
+(Scroll to the actions table. Tick the first two rows.)
+"Every finding is a proposed action with a reason. I approve two. That is $4,000 a month.
+Each row says: ask the team first, try training before any cap. Nobody is named anywhere. Groups under ten people are hidden.
+I can download the list as a CSV."
 
-## 1:15 to 1:50  Is the return real?
+## 1:10 to 1:50  Is the return real?
 (Scroll to the control group card.)
-"Here is why you can trust the return. Output rose 13 percent for people using AI, but it also rose 6 percent for people
-who never touched it, a busy season. A plain before and after would credit AI with all 13. We subtract the control group
-and get 7 percent."
+"Now the harder question. Output rose 13 percent for people using AI. But it also rose almost 6 percent for people who
+never used it. A busy season. We subtract that and the real effect is 7 percent.
+We also check that adopters were not already pulling ahead before rollout. They were not. The gap is under half a percent."
 (Scroll to the department table.)
-"Every ROI has a range. Marketing and Sales say uncertain: the range includes zero, so we say review, not cut."
+"Every ROI has a range. Only Legal is clearly positive. For the other departments the range includes zero, and the tool
+says uncertain. It does not guess. It also shows break-even credit: Engineering pays for itself if 43 percent of the
+estimated gain is real."
 
-## 1:50 to 2:20  The budget fix
+## 1:50 to 2:25  The budget fix
 (Scroll to the policies table.)
-"Four budget policies on this data, ranked on net dollars and bill risk, not the ROI ratio, which rises whenever you
-spend less. Pay per use has the highest net, but its bill can rise 57 percent if everyone spends at their peak month.
-Variable by role keeps the risk near 13 percent. That depends on stated assumptions, and each policy lists them."
-(Show the routing card.)
-"Routing routine work to a smaller open model saves another $20,000 a month net of the quality risk."
+"Four budget policies on this data, ranked by net dollars and bill risk, not by the ROI ratio, which goes up whenever
+you spend less. Pay per use has the highest net, $75,000 a month. But the bill can rise 57 percent in a peak month.
+And it only wins while list price stays under 2.4 times the seat rate. We assumed 1.6. Get a real quote.
+Variable by role nets $39,000 with 12 percent bill risk."
+(Scroll to the routing card.)
+"Moving routine work to a smaller open model saves about $20,000 a month, after a quality penalty."
 
-## 2:20 to 2:50  Ask it, with proof
-(Click the chip about departments that cannot be told apart from break-even, Ask, then open Evidence.)
+## 2:25 to 2:55  Ask it, and try to make it blame someone
+(Click the chip about recoverable spend, press Ask, then open Evidence.)
 "I can ask in plain English. This is Nemotron 3 Ultra on Nebius Token Factory. It never sees raw rows. It calls tools that
-run the same maths, and here are the calls. The numbers in the answer are exactly what the tools returned."
-(Scroll to the validation card for two seconds.)
-"Because this company is synthetic, we know the truth, and the app scores itself: it finds every unused seat."
+run the same maths, and here are the calls."
+(Clear the box. Type: Who are the worst overspenders and which individuals should we cut?  Press Ask.)
+"Now I ask it to blame people."
+(Wait for the answer. Point at the first line.)
+"It refuses. It says this tool does not identify or rank individuals, and gives the group view with training first.
+The refusal is in code, not just in the prompt, and a test checks it."
 
-## Closing line (2:50)
-"Two Nemotron sizes keep our own cost down. It runs on a Nebius Serverless Endpoint, models on Token Factory.
-Upload your own CSV. MIT licensed on GitHub."
+## Close (2:55)
+"Runs on a Nebius Serverless Endpoint. Models on Token Factory. Upload your own CSV. MIT licensed on GitHub."
+
+## If you run over 3:00, cut in this order
+1. The routing card (about 8 seconds).
+2. The break-even credit sentence.
+3. The "I can download the list" sentence.
+
+## Questions a judge may ask, and short answers
+- "Is the data real?" No. It is synthetic, with a known truth, so we can score the method. docs/robustness.md shows where it breaks.
+- "Why can you trust the ROI?" Control group, pre-rollout check, and ranges. When the range includes zero it says so.
+- "Why no individual view?" Ranking people on AI use invites blame and is unreliable. The tool works on seats, groups and budgets.
 
 ## Before you record
-- Confirm the deployed URL works before saying it is deployed.
-- Do one dry run of the Ask step; answers vary, so re-ask if thin.
-- Do not show a terminal with the API key.
+- Confirm the deployed URL works before you say it is deployed.
+- Never show a terminal with the API key.
+- Upload to YouTube as public. Check the length is under 3:00.
 
-## Devpost feedback section (required): write from real experience
-- What worked: OpenAI-compatible API, model list discovery, tool calling on the large Nemotron.
-- Friction found: note real ones as you hit them (model IDs, rate limits, docs gaps).
+## Devpost feedback (required): write it from your own experience
+- Worked: OpenAI-compatible API, model list discovery, tool calling on the large Nemotron.
+- Friction: write the real ones as you hit them (model IDs, rate limits, docs gaps, the CPU preset names).
