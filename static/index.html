@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Ledger</title>
+<style>
+:root{--bg:#0e1116;--panel:#161b22;--line:#252c36;--text:#e6e9ee;--mute:#8b95a5;--accent:#6ea8fe;
+--good:#4ade80;--warn:#fbbf24;--bad:#f87171;--bar:#2f6fd6}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:22px;margin:0}h2{font-size:15px;margin:0 0 12px}
+.sub{color:var(--mute);margin:4px 0 20px}
+.grid{display:grid;gap:12px}.kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:12px}
+.kpi b{display:block;font-size:24px;font-variant-numeric:tabular-nums}.kpi span{color:var(--mute);font-size:12px}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}th{color:var(--mute);font-weight:500;font-size:12px}
+td.n,th.n{text-align:right}
+.roi{display:flex;align-items:center;gap:8px;min-width:140px}.roi i{display:block;height:8px;border-radius:4px;background:var(--bar)}
+.pill{padding:2px 8px;border-radius:99px;font-size:12px;border:1px solid var(--line)}
+.fixed{color:var(--accent)}.variable{color:var(--good)}.restrict{color:var(--bad)}
+.row{display:flex;gap:16px;flex-wrap:wrap;align-items:end}
+label{display:block;color:var(--mute);font-size:12px}input[type=range]{width:180px}
+button,.btn{background:var(--bar);color:#fff;border:0;border-radius:6px;padding:8px 14px;cursor:pointer;font:inherit;text-decoration:none;display:inline-block}
+button.ghost,.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
+button:disabled{opacity:.5}
+textarea{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:10px;font:inherit;resize:vertical}
+.ans{white-space:pre-wrap;margin-top:12px}.err{color:var(--bad);margin-top:8px}
+details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;border-radius:6px;overflow:auto;max-height:260px;font-size:12px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.chip{cursor:pointer}
+.scroll{overflow-x:auto}
+.best td{color:var(--good)}
+.hero{border-color:#7f1d1d;background:linear-gradient(180deg,#1c1214,var(--panel))}.hero .lab{color:var(--mute);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+.big b{font-size:44px;color:var(--bad);font-variant-numeric:tabular-nums}.big span{color:var(--mute)}
+.sec{margin:24px 0 10px;font-size:13px;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}
+</style>
+</head>
+<body>
+<main>
+  <h1>AI Ledger</h1>
+  <p class="sub">Is your AI spend paying off, and how should each team's budget work? Powered by NVIDIA Nemotron on Nebius Token Factory.</p>
+
+  <div class="card">
+    <div class="row">
+      <div><label>Data</label>
+        <span id="src" class="pill">synthetic company</span></div>
+      <input id="file" type="file" accept=".csv" hidden>
+      <button class="ghost" onclick="file.click()">Upload CSV</button>
+      <a class="btn ghost" href="/api/sample.csv">Sample CSV</a>
+      <button class="ghost" onclick="reset()">Reset</button>
+      <div style="flex:1"></div>
+      <div><label>Value realization: <b id="rv">50%</b> of extra output counted</label>
+        <input id="real" type="range" min="10" max="100" value="50"></div>
+      <div><label>Throttle elasticity: <b id="ev">0.5</b></label>
+        <input id="elas" type="range" min="10" max="100" value="50"></div>
+    </div>
+    <div id="uerr" class="err"></div>
+  </div>
+
+  <div class="card hero"><span class="lab">Recoverable AI spend found</span>
+    <div class="big"><b id="wtot">$0</b><span> / month</span></div>
+    <div class="sub" id="wsub" style="margin:4px 0 0"></div></div>
+
+  <div class="card scroll"><h2>Where the waste is</h2><table id="waste"></table>
+    <p class="sub" style="margin:10px 0 0">Idle = under 3 sessions a month, so the seat does nothing. Overspend = token spend above the 75th percentile of ROI-positive colleagues in the same department, from people whose ROI is negative.</p></div>
+
+  <div class="card"><h2>Executive brief</h2>
+    <button id="bb" onclick="brief()">Generate with Nemotron</button>
+    <div id="brief" class="ans"></div></div>
+
+  <h2 class="sec">The fix: budget policy</h2>
+  <div class="card scroll"><h2>Policies, simulated on this data</h2><table id="pols"></table>
+    <p class="sub" id="polnote" style="margin:10px 0 0"></p></div>
+  <div class="card scroll"><h2>Recommended budget per department</h2><table id="buds"></table></div>
+
+  <h2 class="sec">Return detail</h2>
+  <div id="kpis" class="grid kpis"></div>
+  <div class="card scroll"><h2>ROI by department</h2><table id="depts"></table></div>
+
+  <div class="card"><h2>Ask the analyst</h2>
+    <div class="chips" id="chips"></div>
+    <textarea id="q" rows="2" placeholder="e.g. Which department should lose seats, and what would we save?"></textarea>
+    <div style="margin-top:8px"><button id="ab" onclick="ask()">Ask</button></div>
+    <div id="ans" class="ans"></div><div id="aerr" class="err"></div>
+    <details id="ev"><summary>Evidence: tool calls behind the answer</summary><pre id="evpre"></pre></details>
+  </div>
+</main>
+<script>
+const $=id=>document.getElementById(id), usd=n=>(n<0?'-':'')+'$'+Math.abs(Math.round(n)).toLocaleString();
+const pct=n=>Math.round(n*100)+'%', x=n=>n.toFixed(1)+'x';
+let R;
+async function j(url,opt){const r=await fetch(url,opt);const b=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(b.detail||r.statusText);return b}
+function render(r){R=r;const c=r.summary.company;
+  $('kpis').innerHTML=[['Monthly AI cost',usd(c.monthly_cost)],['Estimated value',usd(c.monthly_value)],
+   ['Company ROI',x(c.roi)],['Headcount',c.headcount],['Net value/mo',usd(c.net)]]
+   .map(([k,v])=>`<div class="card kpi"><b>${v}</b><span>${k}</span></div>`).join('');
+  const w=r.waste;$('wtot').textContent=usd(w.total_monthly);
+  $('wsub').textContent=`${usd(w.total_annual)} a year: ${w.idle_seats} idle seats (${usd(w.idle_monthly)}/mo) and ${w.over_people} overspenders (${usd(w.over_monthly)}/mo above peer norms).`;
+  $('waste').innerHTML='<tr><th>Department</th><th class=n>Idle seats</th><th class=n>Idle cost/mo</th><th class=n>Overspenders</th><th class=n>Overspend/mo</th><th class=n>Recoverable/mo</th></tr>'+
+   Object.entries(w.by_department).map(([k,v])=>`<tr><td>${k}</td><td class=n>${v.idle_seats}</td><td class=n>${usd(v.idle_cost)}</td><td class=n>${v.over_people}</td><td class=n>${usd(v.over_cost)}</td><td class=n><b>${usd(v.total)}</b></td></tr>`).join('');
+  const d=r.summary.departments, max=Math.max(...Object.values(d).map(v=>Math.abs(v.roi)),1);
+  $('depts').innerHTML='<tr><th>Department</th><th class=n>People</th><th class=n>Cost/head</th><th class=n>Net/mo</th><th>ROI</th><th class=n>Idle</th><th class=n>Overspend</th></tr>'+
+   Object.entries(d).map(([k,v])=>`<tr><td>${k}<br><span style="color:var(--mute);font-size:12px">${r.unit_names[k]||''}</span></td><td class=n>${v.headcount}</td><td class=n>${usd(v.cost_per_head)}</td><td class=n>${usd(v.net)}</td>
+   <td><div class=roi><i style="width:${Math.max(2,Math.abs(v.roi)/max*110)}px;background:${v.roi<0?'var(--bad)':v.roi<1?'var(--warn)':'var(--bar)'}"></i>${x(v.roi)}</div></td><td class=n>${v.idle}</td><td class=n>${v.overspenders}</td></tr>`).join('');
+  const best=Math.max(...r.policies.map(p=>p.net));
+  $('pols').innerHTML='<tr><th>Policy</th><th class=n>Cost/mo</th><th class=n>Value/mo</th><th class=n>Net/mo</th><th class=n>ROI</th><th class=n title="Extra bill if everyone spends at their own peak month">Bill risk</th><th>How it works</th></tr>'+
+   r.policies.map(p=>`<tr class="${p.net===best?'best':''}"><td>${p.name}</td><td class=n>${usd(p.monthly_cost)}</td><td class=n>${usd(p.monthly_value)}</td><td class=n>${usd(p.net)}</td><td class=n>${x(p.roi)}</td><td class=n>+${pct(p.bill_risk)}</td><td style="color:var(--mute)">${p.description}</td></tr>`).join('');
+  const top=r.policies.reduce((a,b)=>b.net>a.net?b:a);
+  $('polnote').textContent=`Highlighted row: highest net value (${top.name}). ROI is a ratio and rises whenever spend falls, so rank on net dollars and check bill risk, the extra cost if everyone spends at their own peak month.`;
+  $('buds').innerHTML='<tr><th>Department</th><th>Model</th><th class=n>Per head now</th><th class=n>Recommended</th><th class=n>Token cap</th><th>Why</th></tr>'+
+   Object.entries(r.budgets).map(([k,v])=>`<tr><td>${k}</td><td><span class="pill ${v.verdict}">${v.verdict}</span></td><td class=n>${usd(v.current_per_head)}</td><td class=n>${usd(v.recommended_per_head)}</td><td class=n>${usd(v.recommended_token_cap)}</td><td style="color:var(--mute)">${v.reason}</td></tr>`).join('');
+  $('chips').innerHTML=['Where is most of the waste, and what is the fastest fix?','Which department should lose seats, and what would we save?','Is a variable budget better than fixed for Sales?','Who are the worst overspenders in Marketing?','Why is Legal ROI so high?']
+   .map(t=>`<span class="pill chip" onclick="q.value=this.textContent">${t}</span>`).join('')}
+async function load(){render(await j('/api/report'))}
+let t;function sliders(){$('rv').textContent=real.value+'%';$('ev').textContent=(elas.value/100).toFixed(1);
+  clearTimeout(t);t=setTimeout(async()=>{try{render(await j('/api/assumptions',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({realization:real.value/100,elasticity:elas.value/100})}))}catch(e){$('uerr').textContent=e.message}},250)}
+real.oninput=elas.oninput=sliders;
+$('file').onchange=async e=>{$('uerr').textContent='';const f=new FormData();f.append('file',e.target.files[0]);
+  try{render(await j('/api/upload',{method:'POST',body:f}));$('src').textContent=e.target.files[0].name}catch(err){$('uerr').textContent=err.message}};
+async function reset(){$('uerr').textContent='';render(await j('/api/reset',{method:'POST'}));$('src').textContent='synthetic company'}
+async function brief(){$('bb').disabled=true;$('brief').textContent='Thinking…';
+  try{const b=await j('/api/brief');$('brief').textContent=b.brief+'\n\nmodel: '+b.model}catch(e){$('brief').innerHTML='<span class=err></span>';$('brief').firstChild.textContent=e.message}
+  $('bb').disabled=false}
+async function ask(){if(!q.value.trim())return;$('ab').disabled=true;$('ans').textContent='Thinking…';$('aerr').textContent='';$('evpre').textContent='';
+  try{const a=await j('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q.value})});
+   $('ans').textContent=a.answer+'\n\nmodel: '+a.model;$('evpre').textContent=JSON.stringify(a.evidence,null,1)}
+  catch(e){$('ans').textContent='';$('aerr').textContent=e.message}
+  $('ab').disabled=false}
+load();
+</script>
+</body>
+</html>
