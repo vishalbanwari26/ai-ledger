@@ -30,6 +30,11 @@ Rules:
   monthly dollars (value minus cost) first, then on bill_risk. Rows are pre-flagged highest_net and
   lowest_bill_risk: use those flags and mention every flagged policy. bill_risk is (how much worse the bill gets if everyone spends
   at their own peak month; lower is more predictable). State both and name the trade-off.
+- Each department has a confidence flag. If it is 'uncertain', the ROI range includes zero: say the data cannot
+  separate that department from break-even, and quote roi_low and roi_high.
+- Differences between levels (intern vs senior) mostly reflect hourly rate, because value is time saved times rate.
+  Never recommend cutting access for a level on ROI alone; say what else matters (learning, ramp-up).
+- Employee-level data may be grouped for privacy. Never try to identify individuals.
 - Be direct. Lead with the answer, then the two or three numbers that support it. No filler."""
 
 TOOLS = [
@@ -41,7 +46,15 @@ TOOLS = [
         "ROI-positive peers spend, company-wide and per department, with annual total.",
         "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {
-        "name": "list_employees", "description": "Employees ranked by ROI, optionally filtered by department and segment "
+        "name": "get_actions", "description": "Proposed changes (reclaim seats, cap token spend) per department and level, "
+        "each with monthly saving and reason.",
+        "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {
+        "name": "get_routing", "description": "Monthly saving from moving routine tokens to a cheaper open model, "
+        "the value put at risk, and net gain, per department.",
+        "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {
+        "name": "list_employees", "description": "Groups (or, in admin mode, employees) ranked by ROI, optionally filtered by department and segment "
         "(idle, overspender, low-return, break-even, high-return).",
         "parameters": {"type": "object", "properties": {
             "department": {"type": "string"}, "segment": {"type": "string"},
@@ -65,6 +78,7 @@ _MODELS: dict[str, str] | None = None
 class Analyst:
     ds: Dataset
     assumptions: an.Assumptions = field(default_factory=an.Assumptions)
+    admin: bool = field(default_factory=lambda: os.environ.get("LEDGER_ADMIN") == "1")
     _client: OpenAI | None = None
     _models: dict[str, str] | None = None
 
@@ -105,9 +119,13 @@ class Analyst:
             return an.summary(ds, a)
         if name == "get_waste":
             return an.waste(ds, a)
+        if name == "get_actions":
+            return an.actions(ds, a, self.admin)
+        if name == "get_routing":
+            return an.routing(ds, a)
         if name == "list_employees":
-            return an.employees_in(ds, a, args.get("department"), args.get("segment"),
-                                   min(int(args.get("limit", 10)), 25), args.get("worst_first", True))
+            return an.list_people(ds, a, args.get("department"), args.get("segment"),
+                                  min(int(args.get("limit", 10)), 25), args.get("worst_first", True), self.admin)
         if name == "compare_policies":
             return an.compare_policies(ds, a)
         if name == "budget_recommendations":
@@ -136,6 +154,7 @@ class Analyst:
         """One cheap call: executive summary of the current numbers using the fast model."""
         m = self.models()["fast"]
         data = {"summary": an.summary(self.ds, self.assumptions), "waste": an.waste(self.ds, self.assumptions),
+                "routing": an.routing(self.ds, self.assumptions),
                 "policies": an.compare_policies(self.ds, self.assumptions)}
         r = self.client().chat.completions.create(
             model=m, temperature=0.2,

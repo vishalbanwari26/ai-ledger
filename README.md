@@ -3,21 +3,35 @@
 Is your company's AI spend paying off, and should each team's budget be fixed or variable?
 
 AI Ledger joins per-employee AI cost (seats, tokens) with outcome data (PRs merged, tickets closed, and so on),
-computes ROI per person, team and company, simulates budget policies on your own data, and lets you question the
-results in plain English. Answers come from NVIDIA Nemotron running on Nebius Token Factory.
+estimates the real effect of AI with a control group, finds recoverable waste, simulates budget policies on your own
+data, and lets you question the results in plain English. Answers come from NVIDIA Nemotron on Nebius Token Factory.
 
-## How it works
+## What it does
 
-- `ailedger/analysis.py`: all the maths. Value = (units above the person's own baseline) x hours per unit x hourly
-  rate x a realization factor. ROI = (value - cost) / cost. Employees are segmented as idle, overspender,
-  low-return, break-even or high-return. Four budget policies are simulated: status quo, fixed budget,
-  pay per use, and variable by role (seats only for active users, per-department token cap, pooled allowance).
-- `ailedger/llm.py`: a tool-calling analyst. The model never sees raw rows. It calls tools backed by the maths
-  above, and the UI shows every tool call behind an answer, so each number can be checked.
-- Two Nemotron tiers: the largest available model handles multi-step questions; the smallest handles routine
-  calls such as the executive brief. Models are discovered from the Token Factory model list, or set with
-  `NEBIUS_MODEL_REASON` and `NEBIUS_MODEL_FAST`.
-- Assumptions (value realization, throttle elasticity) are sliders in the UI and change every number live.
+- **Finds waste:** idle seats and overspenders, with the share of a seat you can actually cancel after contract friction.
+- **Estimates return honestly:** compares each person to their own first two months, then subtracts what happened to
+  people who never adopted (difference-in-differences). Growth is a ratio, so an intern and a senior are comparable.
+  Estimates are shrunk toward the department mean by how noisy individuals are, and every ROI carries a 95% range.
+  A department whose range includes zero is labelled uncertain, and gets "review", never "restrict".
+- **Compares peers fairly:** overspend is judged against people of the same role and level, never the whole department.
+- **Simulates four budget policies:** status quo, fixed, pay per use, variable by role. Ranked on net dollars and bill
+  risk (extra cost if everyone spends at their own peak month), not on the ROI ratio, which rises whenever spend falls.
+- **Prices model routing:** what moving routine tokens to a cheaper open model saves, and the value put at risk.
+- **Turns findings into actions:** a list of seats to reclaim and spend to cap, each with a reason; approve what you
+  want and download it as CSV.
+- **Watches drift:** monthly spend per department with alerts for sudden jumps.
+- **Checks itself:** on the synthetic company the generator keeps hidden truth labels, and the app scores how well the
+  analysis recovers them (precision and recall), including part-timers, people on leave and new hires.
+- **Privacy by default:** groups under 10 people are never shown and no individuals are named. Set `LEDGER_ADMIN=1`
+  to see employee IDs (do this only behind real authentication).
+
+## How the Nemotron analyst works
+
+`ailedger/llm.py` is a tool-calling agent. The model never sees raw rows. It calls tools backed by the maths in
+`ailedger/analysis.py`, and the UI shows every tool call behind an answer, so each number can be checked. Policy
+rankings are pre-computed in code, so the model quotes them instead of comparing rows itself.
+Two Nemotron tiers: the largest available model answers questions; the smallest writes the executive brief. Models are
+discovered from the Token Factory model list, or set with `NEBIUS_MODEL_REASON` and `NEBIUS_MODEL_FAST`.
 
 ## Run
 
@@ -28,7 +42,6 @@ export NEBIUS_API_KEY=...        # Nebius Token Factory key
 ```
 
 Open http://localhost:8077. The dashboard works without a key; the brief and Q&A need it.
-Download the sample CSV from the UI to see the expected columns, then upload your own.
 
 ## Tests
 
@@ -36,10 +49,13 @@ Download the sample CSV from the UI to see the expected columns, then upload you
 .venv/bin/pip install pytest httpx && .venv/bin/pytest
 ```
 
-## Limits
+## Using real data
 
-The demo company is synthetic. Value is an estimate built on stated assumptions, and attributing output gains to AI
-is the hard part in practice: use the realization slider to see how sensitive the conclusions are.
+Upload a CSV with one row per employee per month. Required columns: `employee_id, department, role, month, seat_cost,
+token_cost, tokens, sessions, outcome_units, hours_per_unit, hourly_rate`. Optional: `level` (intern, junior, mid,
+senior; default mid). You need at least 4 months, and the first 2 should be before AI rollout: they are each person's
+baseline. Join vendor billing (cost, tokens, sessions) with your work systems (outcome units) and HR data (role, rate).
+Download the sample CSV from the UI to see the exact shape.
 
 ## Deploy on Nebius Serverless Endpoints
 
@@ -54,8 +70,11 @@ prints the HTTPS URL. The endpoint has no token auth so reviewers can open it; t
 (`LEDGER_LLM_PER_HOUR`, default 120) and gives every visitor their own session, so uploads never leak between people.
 Use a key created only for the demo and rotate it afterwards. Stop or delete the endpoint when judging ends.
 
-## Using real data
+## Limits
 
-The CSV upload takes real exports. Required columns: `employee_id, department, role, month, seat_cost, token_cost,
-tokens, sessions, outcome_units, baseline_units, hours_per_unit, hourly_rate`. Join your vendor billing (cost, tokens,
-sessions) with your own work systems (outcome units, pre-AI baseline) and HR data (role, rate).
+- The demo company is synthetic. Value is an estimate built on stated assumptions; the sliders show how sensitive the
+  conclusions are, and "break-even credit" shows how much of the estimated gain must be real for a team to pay for itself.
+- Adopters choose to adopt, so they may differ from non-adopters. The control group removes shared trends such as
+  seasonality, not self-selection. A real rollout with random or staggered assignment would be stronger evidence.
+- Level differences in dollar ROI mostly reflect hourly rate. Do not cut a level's access on ROI alone.
+- The routine-token share per department and the cheaper model's price are planning assumptions, not measurements.

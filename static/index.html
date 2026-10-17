@@ -11,18 +11,19 @@
 body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 main{max-width:1100px;margin:0 auto;padding:24px 16px 64px}
 h1{font-size:22px;margin:0}h2{font-size:15px;margin:0 0 12px}
-.sub{color:var(--mute);margin:4px 0 20px}
+.sub{color:var(--mute);margin:4px 0 20px}.note{color:var(--mute);font-size:12px;margin:10px 0 0}
 .grid{display:grid;gap:12px}.kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.two{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:12px}
-.kpi b{display:block;font-size:24px;font-variant-numeric:tabular-nums}.kpi span{color:var(--mute);font-size:12px}
+.kpi b{display:block;font-size:22px;font-variant-numeric:tabular-nums}.kpi span{color:var(--mute);font-size:12px}
 table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
-th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line)}th{color:var(--mute);font-weight:500;font-size:12px}
+th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--mute);font-weight:500;font-size:12px}
 td.n,th.n{text-align:right}
-.roi{display:flex;align-items:center;gap:8px;min-width:140px}.roi i{display:block;height:8px;border-radius:4px;background:var(--bar)}
-.pill{padding:2px 8px;border-radius:99px;font-size:12px;border:1px solid var(--line)}
-.fixed{color:var(--accent)}.variable{color:var(--good)}.restrict{color:var(--bad)}
+.roi{display:flex;align-items:center;gap:8px;min-width:150px}.roi i{display:block;height:8px;border-radius:4px;background:var(--bar)}
+.pill{padding:2px 8px;border-radius:99px;font-size:12px;border:1px solid var(--line);white-space:nowrap}
+.fixed{color:var(--accent)}.variable{color:var(--good)}.restrict{color:var(--bad)}.review{color:var(--warn)}.uncertain{color:var(--warn)}.clear{color:var(--good)}
 .row{display:flex;gap:16px;flex-wrap:wrap;align-items:end}
-label{display:block;color:var(--mute);font-size:12px}input[type=range]{width:180px}
+label{display:block;color:var(--mute);font-size:12px}input[type=range]{width:160px}
 button,.btn{background:var(--bar);color:#fff;border:0;border-radius:6px;padding:8px 14px;cursor:pointer;font:inherit;text-decoration:none;display:inline-block}
 button.ghost,.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
 button:disabled{opacity:.5}
@@ -30,11 +31,12 @@ textarea{width:100%;background:var(--bg);color:var(--text);border:1px solid var(
 .ans{white-space:pre-wrap;margin-top:12px}.err{color:var(--bad);margin-top:8px}
 details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;border-radius:6px;overflow:auto;max-height:260px;font-size:12px}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.chip{cursor:pointer}
-.scroll{overflow-x:auto}
-.best td{color:var(--good)}
+.scroll{overflow-x:auto}.best td{color:var(--good)}
 .hero{border-color:#7f1d1d;background:linear-gradient(180deg,#1c1214,var(--panel))}.hero .lab{color:var(--mute);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
 .big b{font-size:44px;color:var(--bad);font-variant-numeric:tabular-nums}.big span{color:var(--mute)}
 .sec{margin:24px 0 10px;font-size:13px;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}
+.cmp{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}.cmp b{font-size:26px;font-variant-numeric:tabular-nums}
+.warn{color:var(--warn)}.mute{color:var(--mute)}
 </style>
 </head>
 <body>
@@ -44,17 +46,15 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
 
   <div class="card">
     <div class="row">
-      <div><label>Data</label>
-        <span id="src" class="pill">synthetic company</span></div>
+      <div><label>Data</label><span id="src" class="pill">synthetic company</span></div>
       <input id="file" type="file" accept=".csv" hidden>
       <button class="ghost" onclick="file.click()">Upload CSV</button>
       <a class="btn ghost" href="/api/sample.csv">Sample CSV</a>
       <button class="ghost" onclick="reset()">Reset</button>
       <div style="flex:1"></div>
-      <div><label>Value realization: <b id="rv">50%</b> of extra output counted</label>
-        <input id="real" type="range" min="10" max="100" value="50"></div>
-      <div><label>Throttle elasticity: <b id="ev">0.5</b></label>
-        <input id="elas" type="range" min="10" max="100" value="50"></div>
+      <div><label>Value realization: <b id="rv">50%</b></label><input id="real" type="range" min="10" max="100" value="50"></div>
+      <div><label>Throttle elasticity: <b id="ev">0.5</b></label><input id="elas" type="range" min="10" max="100" value="50"></div>
+      <div><label>Cheaper model $/1M tok: <b id="cv">0.60</b></label><input id="cheap" type="range" min="10" max="300" value="60"></div>
     </div>
     <div id="uerr" class="err"></div>
   </div>
@@ -64,64 +64,120 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
     <div class="sub" id="wsub" style="margin:4px 0 0"></div></div>
 
   <div class="card scroll"><h2>Where the waste is</h2><table id="waste"></table>
-    <p class="sub" style="margin:10px 0 0">Idle = under 3 sessions a month, so the seat does nothing. Overspend = token spend above the 75th percentile of ROI-positive colleagues in the same department, from people whose ROI is negative.</p></div>
+    <p class="note">Idle = under 3 sessions a month. Idle savings count only the share of a seat you can actually cancel (contract minimums and notice periods).
+    Overspend = token spend above the 75th percentile of ROI-positive peers in the same department and level, from people whose ROI is negative.</p></div>
 
   <div class="card"><h2>Executive brief</h2>
     <button id="bb" onclick="brief()">Generate with Nemotron</button>
     <div id="brief" class="ans"></div></div>
 
+  <h2 class="sec">Act on it</h2>
+  <div class="card scroll"><h2>Proposed actions: approve what you want</h2><table id="acts"></table>
+    <div class="row" style="margin-top:12px"><div id="actsum" class="mute"></div><div style="flex:1"></div>
+      <button class="ghost" onclick="dl()">Download approved as CSV</button></div>
+    <p class="note" id="privnote"></p></div>
+
   <h2 class="sec">The fix: budget policy</h2>
   <div class="card scroll"><h2>Policies, simulated on this data</h2><table id="pols"></table>
-    <p class="sub" id="polnote" style="margin:10px 0 0"></p></div>
+    <p class="note" id="polnote"></p>
+    <details><summary>What each policy assumes</summary><ul id="passm"></ul></details></div>
   <div class="card scroll"><h2>Recommended budget per department</h2><table id="buds"></table></div>
+  <div class="card scroll"><h2>Cost by model: route routine work to a cheaper one</h2><table id="route"></table>
+    <p class="note" id="routenote"></p></div>
 
-  <h2 class="sec">Return detail</h2>
+  <h2 class="sec">Is the return real?</h2>
+  <div class="card"><h2>Why we use a control group</h2>
+    <div class="cmp"><span class="mute">Naive before/after:</span><b id="naive"></b>
+      <span class="mute">Everyone's output rose anyway:</span><b id="ctrl"></b>
+      <span class="mute">AI effect (adopters minus non-adopters):</span><b id="did" style="color:var(--good)"></b></div>
+    <p class="note">Output rose for people who never used AI too (busy season, new product). A plain before/after would credit all of it to AI.
+    Each person is compared with their own first two months, as a ratio, so an intern and a senior are comparable.
+    Limit: people choose whether to adopt, so adopters may differ from non-adopters in ways we cannot see.</p></div>
   <div id="kpis" class="grid kpis"></div>
-  <div class="card scroll"><h2>ROI by department</h2><table id="depts"></table></div>
+  <div class="card scroll"><h2>ROI by department, with 95% range</h2><table id="depts"></table>
+    <p class="note">"Uncertain" means the range includes zero: the data cannot tell this department from break-even. "Break-even credit" is the share of the estimated gain that must be real for the department to pay for itself.</p></div>
+  <div class="card scroll"><h2>ROI by level</h2><table id="levels"></table>
+    <p class="note">Value is time saved times hourly rate, so lower-paid levels show lower dollar ROI on the same seat. This is not a verdict on their work, and it ignores learning and ramp-up. Peer comparisons for overspend are made within level, never across.</p></div>
+
+  <h2 class="sec">Watch it over time</h2>
+  <div class="card scroll"><h2>Monthly AI spend and drift alerts</h2><div id="alerts"></div><table id="trend"></table></div>
+
+  <div class="card" id="valcard" hidden><h2>Does the analysis find what is really there?</h2>
+    <p class="note" style="margin:0 0 10px">This company is synthetic, so we know the truth. Hidden labels (who is a power user, who wastes tokens) are compared with what the analysis flagged. Messy cases are included: part-timers, people on leave, new hires with no baseline.</p>
+    <table id="val"></table><p class="note" id="valnote"></p></div>
 
   <div class="card"><h2>Ask the analyst</h2>
     <div class="chips" id="chips"></div>
     <textarea id="q" rows="2" placeholder="e.g. Which department should lose seats, and what would we save?"></textarea>
     <div style="margin-top:8px"><button id="ab" onclick="ask()">Ask</button></div>
     <div id="ans" class="ans"></div><div id="aerr" class="err"></div>
-    <details id="ev"><summary>Evidence: tool calls behind the answer</summary><pre id="evpre"></pre></details>
+    <details id="evd"><summary>Evidence: tool calls behind the answer</summary><pre id="evpre"></pre></details>
   </div>
 </main>
 <script>
 const $=id=>document.getElementById(id), usd=n=>(n<0?'-':'')+'$'+Math.abs(Math.round(n)).toLocaleString();
-const pct=n=>Math.round(n*100)+'%', x=n=>n.toFixed(1)+'x';
+const pct=n=>Math.round(n*100)+'%', pp=n=>(n*100).toFixed(1)+'%', x=n=>n.toFixed(1)+'x';
+const roiRange=v=>`${x(v.roi)} <span class="mute">(${x(v.roi_low)} to ${x(v.roi_high)})</span>`;
 let R;
 async function j(url,opt){const r=await fetch(url,opt);const b=await r.json().catch(()=>({}));
   if(!r.ok)throw new Error(b.detail||r.statusText);return b}
 function render(r){R=r;const c=r.summary.company;
-  $('kpis').innerHTML=[['Monthly AI cost',usd(c.monthly_cost)],['Estimated value',usd(c.monthly_value)],
-   ['Company ROI',x(c.roi)],['Headcount',c.headcount],['Net value/mo',usd(c.net)]]
-   .map(([k,v])=>`<div class="card kpi"><b>${v}</b><span>${k}</span></div>`).join('');
   const w=r.waste;$('wtot').textContent=usd(w.total_monthly);
-  $('wsub').textContent=`${usd(w.total_annual)} a year: ${w.idle_seats} idle seats (${usd(w.idle_monthly)}/mo) and ${w.over_people} overspenders (${usd(w.over_monthly)}/mo above peer norms).`;
-  $('waste').innerHTML='<tr><th>Department</th><th class=n>Idle seats</th><th class=n>Idle cost/mo</th><th class=n>Overspenders</th><th class=n>Overspend/mo</th><th class=n>Recoverable/mo</th></tr>'+
+  $('wsub').textContent=`${usd(w.total_annual)} a year: ${w.idle_seats} idle seats (${usd(w.idle_monthly)}/mo after contract friction) and ${w.over_people} overspenders (${usd(w.over_monthly)}/mo above peer norms).`;
+  $('waste').innerHTML='<tr><th>Department</th><th class=n>Idle seats</th><th class=n>Idle savings/mo</th><th class=n>Overspenders</th><th class=n>Overspend/mo</th><th class=n>Recoverable/mo</th></tr>'+
    Object.entries(w.by_department).map(([k,v])=>`<tr><td>${k}</td><td class=n>${v.idle_seats}</td><td class=n>${usd(v.idle_cost)}</td><td class=n>${v.over_people}</td><td class=n>${usd(v.over_cost)}</td><td class=n><b>${usd(v.total)}</b></td></tr>`).join('');
-  const d=r.summary.departments, max=Math.max(...Object.values(d).map(v=>Math.abs(v.roi)),1);
-  $('depts').innerHTML='<tr><th>Department</th><th class=n>People</th><th class=n>Cost/head</th><th class=n>Net/mo</th><th>ROI</th><th class=n>Idle</th><th class=n>Overspend</th></tr>'+
-   Object.entries(d).map(([k,v])=>`<tr><td>${k}<br><span style="color:var(--mute);font-size:12px">${r.unit_names[k]||''}</span></td><td class=n>${v.headcount}</td><td class=n>${usd(v.cost_per_head)}</td><td class=n>${usd(v.net)}</td>
-   <td><div class=roi><i style="width:${Math.max(2,Math.abs(v.roi)/max*110)}px;background:${v.roi<0?'var(--bad)':v.roi<1?'var(--warn)':'var(--bar)'}"></i>${x(v.roi)}</div></td><td class=n>${v.idle}</td><td class=n>${v.overspenders}</td></tr>`).join('');
+  $('acts').innerHTML='<tr><th></th><th>Action</th><th>Department</th><th>Level</th><th class=n>People</th><th class=n>Saves/mo</th><th>Why</th></tr>'+
+   r.actions.map(a=>`<tr><td><input type=checkbox class=ak data-id=${a.id} data-s=${a.monthly_saving} onchange=sumActs()></td><td>${a.kind}</td><td>${a.department}</td><td>${a.level}</td><td class=n>${a.people}</td><td class=n>${usd(a.monthly_saving)}</td><td class=mute>${a.reason}</td></tr>`).join('');
+  $('privnote').textContent=r.admin?'Admin view: the downloaded CSV includes employee IDs.':'Privacy mode: groups under 10 people are hidden and no individuals are named. The download lists groups only.';
+  sumActs();
   const best=Math.max(...r.policies.map(p=>p.net));
   $('pols').innerHTML='<tr><th>Policy</th><th class=n>Cost/mo</th><th class=n>Value/mo</th><th class=n>Net/mo</th><th class=n>ROI</th><th class=n title="Extra bill if everyone spends at their own peak month">Bill risk</th><th>How it works</th></tr>'+
-   r.policies.map(p=>`<tr class="${p.net===best?'best':''}"><td>${p.name}</td><td class=n>${usd(p.monthly_cost)}</td><td class=n>${usd(p.monthly_value)}</td><td class=n>${usd(p.net)}</td><td class=n>${x(p.roi)}</td><td class=n>+${pct(p.bill_risk)}</td><td style="color:var(--mute)">${p.description}</td></tr>`).join('');
+   r.policies.map(p=>`<tr class="${p.net===best?'best':''}"><td>${p.name}</td><td class=n>${usd(p.monthly_cost)}</td><td class=n>${usd(p.monthly_value)}</td><td class=n>${usd(p.net)}</td><td class=n>${x(p.roi)}</td><td class=n>+${pct(p.bill_risk)}</td><td class=mute>${p.description}</td></tr>`).join('');
   const top=r.policies.reduce((a,b)=>b.net>a.net?b:a);
   $('polnote').textContent=`Highlighted row: highest net value (${top.name}). ROI is a ratio and rises whenever spend falls, so rank on net dollars and check bill risk, the extra cost if everyone spends at their own peak month.`;
-  $('buds').innerHTML='<tr><th>Department</th><th>Model</th><th class=n>Per head now</th><th class=n>Recommended</th><th class=n>Token cap</th><th>Why</th></tr>'+
-   Object.entries(r.budgets).map(([k,v])=>`<tr><td>${k}</td><td><span class="pill ${v.verdict}">${v.verdict}</span></td><td class=n>${usd(v.current_per_head)}</td><td class=n>${usd(v.recommended_per_head)}</td><td class=n>${usd(v.recommended_token_cap)}</td><td style="color:var(--mute)">${v.reason}</td></tr>`).join('');
-  $('chips').innerHTML=['Where is most of the waste, and what is the fastest fix?','Which department should lose seats, and what would we save?','Is a variable budget better than fixed for Sales?','Who are the worst overspenders in Marketing?','Why is Legal ROI so high?']
+  $('passm').innerHTML=r.policy_assumptions.map(t=>`<li>${t}</li>`).join('');
+  $('buds').innerHTML='<tr><th>Department</th><th>Model</th><th>Confidence</th><th class=n>Per head now</th><th class=n>Recommended</th><th class=n>Token cap by level</th><th>Why</th></tr>'+
+   Object.entries(r.budgets).map(([k,v])=>`<tr><td>${k}</td><td><span class="pill ${v.verdict}">${v.verdict}</span></td><td class="${v.confidence}">${v.confidence}</td><td class=n>${usd(v.current_per_head)}</td><td class=n>${usd(v.recommended_per_head)}</td><td class=n>${Object.entries(v.token_cap_by_level).map(([l,c])=>l[0].toUpperCase()+l.slice(1)+' '+usd(c)).join('<br>')||usd(v.recommended_token_cap)}</td><td class=mute>${v.reason}</td></tr>`).join('');
+  const rt=r.routing;
+  $('route').innerHTML='<tr><th>Department</th><th class=n>Tokens/mo (M)</th><th class=n>Routine share</th><th class=n>Saving/mo</th><th class=n>Value at risk</th><th class=n>Net gain/mo</th></tr>'+
+   Object.entries(rt.by_department).map(([k,v])=>`<tr><td>${k}</td><td class=n>${v.monthly_tokens_m}</td><td class=n>${pct(v.routine_share)}</td><td class=n>${usd(v.saving)}</td><td class=n>${usd(v.value_at_risk)}</td><td class=n><b>${usd(v.net_gain)}</b></td></tr>`).join('')+
+   `<tr><td><b>Total</b></td><td></td><td></td><td class=n><b>${usd(rt.saving)}</b></td><td class=n>${usd(rt.value_at_risk)}</td><td class=n><b>${usd(rt.net_gain)}</b></td></tr>`;
+  $('routenote').textContent=`Assumes routine tokens move from $${rt.frontier_price.toFixed(2)} to $${rt.cheap_price.toFixed(2)} per 1M tokens and ${pct(rt.quality_penalty)} of their value is lost. The routine share is a planning assumption: measure it on your own traffic before relying on it. Set the price to your actual Token Factory rate with the slider.`;
+  $('naive').textContent=pp(c.naive_lift);$('ctrl').textContent=pp(c.control_growth);$('did').textContent=pp(c.did_lift);
+  $('kpis').innerHTML=[['Monthly AI cost',usd(c.monthly_cost)],['Estimated value',usd(c.monthly_value)+`<br><span>${usd(c.value_low)} to ${usd(c.value_high)}</span>`],
+   ['Company ROI',x(c.roi)],['Net value/mo',usd(c.net)],['Headcount',c.headcount]]
+   .map(([k,v])=>`<div class="card kpi"><b>${v}</b><span>${k}</span></div>`).join('');
+  const d=r.summary.departments, max=Math.max(...Object.values(d).map(v=>Math.abs(v.roi_high)),1);
+  $('depts').innerHTML='<tr><th>Department</th><th class=n>People</th><th class=n>Cost/head</th><th class=n>AI effect</th><th>ROI (95% range)</th><th>Confidence</th><th class=n>Break-even credit</th><th class=n>Idle</th></tr>'+
+   Object.entries(d).map(([k,v])=>`<tr><td>${k}<br><span class=mute style="font-size:12px">${r.unit_names[k]||''}</span></td><td class=n>${v.headcount}</td><td class=n>${usd(v.cost_per_head)}</td><td class=n>${pp(v.did_lift)}</td>
+   <td><div class=roi><i style="width:${Math.max(2,Math.abs(v.roi)/max*90)}px;background:${v.roi<0?'var(--bad)':v.roi<1?'var(--warn)':'var(--bar)'}"></i>${roiRange(v)}</div></td>
+   <td class="${v.confidence}">${v.confidence}</td><td class=n>${v.break_even_realization==null?'never':pct(v.break_even_realization)}</td><td class=n>${v.idle}</td></tr>`).join('');
+  $('levels').innerHTML='<tr><th>Level</th><th class=n>People</th><th class=n>Cost/head</th><th class=n>Value/mo</th><th>ROI (95% range)</th></tr>'+
+   Object.entries(r.summary.levels).map(([k,v])=>`<tr><td>${k}</td><td class=n>${v.headcount}</td><td class=n>${usd(v.cost_per_head)}</td><td class=n>${usd(v.monthly_value)}</td><td>${roiRange(v)}</td></tr>`).join('');
+  const t=r.trend;
+  $('alerts').innerHTML=t.alerts.length?t.alerts.map(a=>`<p class=warn>Drift: ${a.department} spend rose ${pct(a.change)} in ${a.month} (${usd(a.previous)} to ${usd(a.latest)}). Check for new rollout or runaway agents.</p>`).join(''):'<p class=mute>No department rose more than 15% month over month.</p>';
+  $('trend').innerHTML='<tr><th>Department</th>'+t.months.map(m=>`<th class=n>${m}</th>`).join('')+'</tr>'+
+   Object.entries(t.by_department).map(([k,v])=>`<tr><td>${k}</td>${v.map(n=>`<td class=n>${usd(n)}</td>`).join('')}</tr>`).join('')+
+   `<tr><td><b>Company</b></td>${t.company.map(n=>`<td class=n><b>${usd(n)}</b></td>`).join('')}</tr>`;
+  const v=r.validation;$('valcard').hidden=!(v&&v.idle_seats);
+  if(v&&v.idle_seats){const f=(l,o)=>`<tr><td>${l}</td><td class=mute>${o.vs}</td><td class=n>${o.flagged}</td><td class=n>${o.actual}</td><td class=n>${pct(o.precision)}</td><td class=n>${pct(o.recall)}</td></tr>`;
+   $('val').innerHTML='<tr><th>Flag</th><th>Truth</th><th class=n>Flagged</th><th class=n>Actual</th><th class=n>Precision</th><th class=n>Recall</th></tr>'+
+    f('Idle seats',v.idle_seats)+f('Idle seats',v.idle_vs_nonusers)+f('Overspenders',v.overspenders)+f('No real return',v.no_value);
+   $('valnote').textContent=`Precision: of the people flagged, how many really are. Recall: of the people who really are, how many were found. The company trend removed by the control group: ${pp(v.naive_vs_did.trend_removed)} points. Messy cases present: ${v.messy.part_time} part-timers, ${v.messy.new_hires} new hires without a baseline, ${v.messy.on_leave} people on leave.`}
+  $('chips').innerHTML=['Where is most of the waste, and what is the fastest fix?','Which departments can we not tell apart from break-even?','Is a variable budget better than fixed for Sales?','How much would routing routine work to a cheaper model save?']
    .map(t=>`<span class="pill chip" onclick="q.value=this.textContent">${t}</span>`).join('')}
+function sumActs(){const ks=[...document.querySelectorAll('.ak:checked')];const s=ks.reduce((a,k)=>a+ +k.dataset.s,0);
+  $('actsum').textContent=ks.length?`${ks.length} approved: ${usd(s)}/mo, ${usd(s*12)}/yr`:'Nothing approved yet'}
+function dl(){const ids=[...document.querySelectorAll('.ak:checked')].map(k=>k.dataset.id).join(',');
+  if(!ids){$('uerr').textContent='Tick at least one action first.';return}$('uerr').textContent='';location.href='/api/actions.csv?ids='+ids}
 async function load(){render(await j('/api/report'))}
-let t;function sliders(){$('rv').textContent=real.value+'%';$('ev').textContent=(elas.value/100).toFixed(1);
-  clearTimeout(t);t=setTimeout(async()=>{try{render(await j('/api/assumptions',{method:'POST',headers:{'Content-Type':'application/json'},
-   body:JSON.stringify({realization:real.value/100,elasticity:elas.value/100})}))}catch(e){$('uerr').textContent=e.message}},250)}
-real.oninput=elas.oninput=sliders;
+let tm;function sliders(){$('rv').textContent=real.value+'%';$('ev').textContent=(elas.value/100).toFixed(1);$('cv').textContent=(cheap.value/100).toFixed(2);
+  clearTimeout(tm);tm=setTimeout(async()=>{try{render(await j('/api/assumptions',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({realization:real.value/100,elasticity:elas.value/100,cheap_price_per_m:cheap.value/100})}))}catch(e){$('uerr').textContent=e.message}},250)}
+real.oninput=elas.oninput=cheap.oninput=sliders;
 $('file').onchange=async e=>{$('uerr').textContent='';const f=new FormData();f.append('file',e.target.files[0]);
   try{render(await j('/api/upload',{method:'POST',body:f}));$('src').textContent=e.target.files[0].name}catch(err){$('uerr').textContent=err.message}};
-async function reset(){$('uerr').textContent='';render(await j('/api/reset',{method:'POST'}));$('src').textContent='synthetic company'}
+async function reset(){$('uerr').textContent='';render(await j('/api/reset',{method:'POST'}));$('src').textContent='synthetic company';real.value=50;elas.value=50;cheap.value=60;$('rv').textContent='50%';$('ev').textContent='0.5';$('cv').textContent='0.60'}
 async function brief(){$('bb').disabled=true;$('brief').textContent='Thinking…';
   try{const b=await j('/api/brief');$('brief').textContent=b.brief+'\n\nmodel: '+b.model}catch(e){$('brief').innerHTML='<span class=err></span>';$('brief').firstChild.textContent=e.message}
   $('bb').disabled=false}

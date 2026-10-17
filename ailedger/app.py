@@ -46,14 +46,16 @@ class Ask(BaseModel):
 class Params(BaseModel):
     realization: float = 0.5
     elasticity: float = 0.5
-    window_months: int = 3
+    cheap_price_per_m: float = 0.6
 
 
 def _report(st: Analyst) -> dict:
     a = st.assumptions
     return dict(summary=an.summary(st.ds, a), policies=an.compare_policies(st.ds, a),
                 budgets=an.budget_recommendations(st.ds, a), waste=an.waste(st.ds, a),
-                unit_names=data.UNIT_NAMES, rows=len(st.ds.rows))
+                actions=an.actions(st.ds, a, st.admin), routing=an.routing(st.ds, a), trend=an.trend(st.ds),
+                validation=an.validate(st.ds, a), policy_assumptions=an.POLICY_ASSUMPTIONS,
+                admin=st.admin, unit_names=data.UNIT_NAMES, rows=len(st.ds.rows))
 
 
 @app.get("/")
@@ -74,10 +76,10 @@ def report(request: Request, response: Response):
 @app.post("/api/assumptions")
 def set_assumptions(p: Params, request: Request, response: Response):
     st = get_state(request, response)
-    if not (0.05 <= p.realization <= 1 and 0.1 <= p.elasticity <= 1 and 1 <= p.window_months <= 12):
+    if not (0.05 <= p.realization <= 1 and 0.1 <= p.elasticity <= 1 and 0.0 <= p.cheap_price_per_m <= 5.0):
         raise HTTPException(422, "assumption out of range")
-    st.assumptions = an.Assumptions(window_months=p.window_months, realization=p.realization,
-                                    elasticity=p.elasticity)
+    st.assumptions = an.Assumptions(realization=p.realization, elasticity=p.elasticity,
+                                    cheap_price_per_m=p.cheap_price_per_m)
     return _report(st)
 
 
@@ -100,6 +102,23 @@ def reset(request: Request, response: Response):
     st.ds = _default_ds
     st.assumptions = an.Assumptions()
     return _report(st)
+
+
+@app.get("/api/actions.csv")
+def actions_csv(request: Request, response: Response, ids: str = ""):
+    """Download the approved actions. `ids` is a comma list of action ids the user ticked."""
+    st = get_state(request, response)
+    want = {int(x) for x in ids.split(",") if x.strip().isdigit()}
+    rows = [r for r in an.actions(st.ds, st.assumptions, st.admin) if not want or r["id"] in want]
+    import csv, io
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["action", "department", "level", "people", "monthly_saving", "reason"] + (["employee_ids"] if st.admin else []))
+    for r in rows:
+        w.writerow([r["kind"], r["department"], r["level"], r["people"], r["monthly_saving"], r["reason"]]
+                   + ([" ".join(r.get("employee_ids", []))] if st.admin else []))
+    return PlainTextResponse(buf.getvalue(), media_type="text/csv",
+                             headers={"Content-Disposition": "attachment; filename=ai-ledger-actions.csv"})
 
 
 @app.get("/api/sample.csv")
