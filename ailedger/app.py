@@ -74,6 +74,19 @@ def report(request: Request, response: Response):
     return _report(get_state(request, response))
 
 
+@app.get("/api/robustness")
+def robustness(request: Request, response: Response):
+    st = get_state(request, response)
+    return an.robustness(st.ds, st.assumptions)
+
+
+@app.get("/api/explain")
+def explain(request: Request, response: Response, department: str = ""):
+    st = get_state(request, response)
+    return dict(department=an.explain(st.ds, st.assumptions, department or None),
+                policies=an.explain_policies(st.ds, st.assumptions))
+
+
 @app.post("/api/assumptions")
 def set_assumptions(p: Params, request: Request, response: Response):
     st = get_state(request, response)

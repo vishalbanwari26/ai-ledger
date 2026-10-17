@@ -40,3 +40,29 @@ so the estimates can be scored. "Coverage" is how often the true department ROI 
 - The synthetic company was built with the same structure the method assumes (staggered rollout, a pre-period, a
   never-adopting control group). Real data may violate that. The scores above show the method works when its assumptions
   hold and degrades in the ways listed when they do not.
+
+## Defending the numbers: "isn't this all subjective?"
+
+Partly. The tool does not hide it. Every number is one of four kinds, shown on the page under "How much of this is opinion?":
+
+- **Measured:** seats, token spend, sessions, output. Counted from your data.
+- **Estimated:** the AI effect and department ROI, with 95% ranges.
+- **Assumed:** realization, elasticity, pay-per-use price, seat savings, routing share. Sliders.
+- **Judgement:** what counts as "high" spend compared with peers. A choice, shown so you can disagree.
+
+Then each decision is re-run in 180 combinations of the assumptions. In the default company, two hold in all of them
+(reassigning unused seats; variable by role beating the status quo on net dollars). "Pay per use is best" holds in 75%.
+Company-wide ROI above zero holds in 60%. Only Legal's ROI is positive in every scenario. Act on what holds. For the
+rest, get the missing number (a vendor quote, a pilot).
+
+"Reassigning unused seats raises net value" is true by construction, because a seat with no usage produces no AI value.
+It is robust, but it is not a finding about the people in those seats. Whether to reassign is a conversation with the team.
+
+### "A junior might need more tokens than the cap allows"
+
+Correct, and the first version got this wrong. Caps came from what ROI-positive peers spend. Dollar ROI depends on
+hourly rate, so juniors only looked ROI-positive when they spent little, which made their cap circular. Now interns and
+juniors are never capped below the department-wide cap, and the page labels all caps as peer norms (what colleagues
+spend), not need (what the work requires). What the tool still cannot do is tell a junior who iterates more because they
+are learning from one who is stuck on a poor workflow. That takes a conversation, which is why the action list says
+"ask the team first, try training before any cap".

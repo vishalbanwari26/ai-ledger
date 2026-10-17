@@ -376,3 +376,52 @@ def test_person_question_is_reframed_and_prefixed():
     a = _stub_analyst(["Engineering has the most recoverable spend."])
     out = a.ask("Who are the worst overspenders?")
     assert out["reframed"] and out["answer"].startswith("This tool does not identify or rank individuals")
+
+
+def test_juniors_and_interns_never_capped_below_department():
+    ds, a = data.generate(), an.Assumptions()
+    es = an.employees(ds, a)
+    caps = an._caps(es, a, 0.75)
+    for d in {e.department for e in es}:
+        for lv in ("intern", "junior"):
+            assert caps[(d, lv)] >= caps[(d, None)] - 1e-9
+
+
+def test_robustness_separates_robust_from_assumed():
+    r = an.robustness(data.generate(), an.Assumptions())
+    by = {d["id"]: d for d in r["decisions"]}
+    assert r["scenarios"] == 180
+    assert by["vbr_beats_status_quo"]["verdict"] == "robust"
+    assert by["ppu_highest"]["verdict"] == "depends on assumptions"  # winner flips with the price assumption
+    assert r["departments"]["Legal"]["verdict"] == "positive"
+    assert set(r["kinds"]) == {"measured", "estimated", "assumed", "judgement"}
+
+
+def test_robustness_endpoint_and_cache():
+    c = TestClient(app)
+    r1 = c.get("/api/robustness").json()
+    assert r1["decisions"] and r1["departments"]
+    assert c.get("/api/robustness").json() == r1
+
+
+def test_worked_steps_match_dashboard_numbers():
+    ds, a = data.generate(), an.Assumptions()
+    s, w = an.summary(ds, a), an.waste(ds, a)
+    for d, v in s["departments"].items():
+        steps = {x["title"][:2]: x for x in an.explain(ds, a, d)["steps"]}
+        assert f"${v['monthly_cost']:,.0f}" in steps["1."]["result"]
+        assert f"ROI {v['roi']:.2f}" in steps["8."]["result"]
+        assert f"${w['by_department'][d]['total']:,.0f}" in steps["9."]["result"]
+
+
+def test_explain_has_no_individuals_and_covers_policies():
+    import json, re
+    ds, a = data.generate(), an.Assumptions()
+    body = json.dumps(an.explain(ds, a, "Sales")) + json.dumps(an.explain_policies(ds, a))
+    assert not re.search(r"E\d{4}", body)
+    assert {p["policy"] for p in an.explain_policies(ds, a)} >= {"Status quo", "Pay per use", "Bill risk"}
+
+
+def test_explain_endpoint():
+    r = TestClient(app).get("/api/explain?department=Legal").json()
+    assert r["department"]["department"] == "Legal" and len(r["department"]["steps"]) == 9

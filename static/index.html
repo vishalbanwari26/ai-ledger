@@ -36,6 +36,8 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
 .big b{font-size:44px;color:var(--bad);font-variant-numeric:tabular-nums}.big span{color:var(--mute)}
 .sec{margin:24px 0 10px;font-size:13px;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}
 .cmp{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}.cmp b{font-size:26px;font-variant-numeric:tabular-nums}
+.step{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px}.step b{display:block;margin-bottom:2px}
+.fm{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--accent);margin:2px 0}.res{margin-top:4px;font-variant-numeric:tabular-nums}
 .warn{color:var(--warn)}.mute{color:var(--mute)}
 </style>
 </head>
@@ -82,7 +84,8 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
   <div class="card scroll"><h2>Policies, simulated on this data</h2><table id="pols"></table>
     <p class="note" id="polnote"></p>
     <details><summary>What each policy assumes</summary><ul id="passm"></ul></details></div>
-  <div class="card scroll"><h2>Recommended budget per department</h2><table id="buds"></table></div>
+  <div class="card scroll"><h2>Recommended budget per department</h2><table id="buds"></table>
+    <p class="note">Caps are peer norms: what colleagues of the same role and level who get a positive return spend today. They describe use, not need. Interns and juniors are never set below the department cap, because they iterate more while learning. Treat every cap as a starting point to adjust with the team.</p></div>
   <div class="card scroll"><h2>Cost by model: route routine work to a cheaper one</h2><table id="route"></table>
     <p class="note" id="routenote"></p></div>
 
@@ -100,6 +103,17 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
     <p class="note">"Uncertain" means the range includes zero: the data cannot tell this department from break-even. "Break-even credit" is the share of the estimated gain that must be real for the department to pay for itself.</p></div>
   <div class="card scroll"><h2>ROI by level</h2><table id="levels"></table>
     <p class="note">Value is time saved times hourly rate, so lower-paid levels show lower dollar ROI on the same seat. This is not a verdict on their work, and it ignores learning and ramp-up. Peer comparisons for high spend are made within level, never across.</p></div>
+
+  <div class="card" id="robcard"><h2>How much of this is opinion?</h2>
+    <div id="kinds" class="grid two"></div>
+    <p class="note" id="robnote">Computing 180 assumption scenarios…</p>
+    <table id="robdec"></table><table id="robdep" style="margin-top:12px"></table></div>
+
+  <div class="card" id="mathcard"><h2>Show the math</h2>
+    <div class="row" style="margin-bottom:10px"><div><label>Department</label><select id="mdept" onchange="loadMath(this.value)" style="background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font:inherit"></select></div>
+      <div class="mute" style="max-width:640px">Every figure above is built from these steps, with this department's own numbers and your current sliders. Only averages and totals appear. No individual is shown.</div></div>
+    <div id="msteps" class="grid"></div>
+    <h2 style="margin-top:16px">Budget policies</h2><div id="mpols" class="grid"></div></div>
 
   <h2 class="sec">Watch it over time</h2>
   <div class="card scroll"><h2>Monthly AI spend and drift alerts</h2><div id="alerts"></div><table id="trend"></table></div>
@@ -172,14 +186,31 @@ function sumActs(){const ks=[...document.querySelectorAll('.ak:checked')];const 
   $('actsum').textContent=ks.length?`${ks.length} approved: ${usd(s)}/mo, ${usd(s*12)}/yr`:'Nothing approved yet'}
 function dl(){const ids=[...document.querySelectorAll('.ak:checked')].map(k=>k.dataset.id).join(',');
   if(!ids){$('uerr').textContent='Tick at least one action first.';return}$('uerr').textContent='';location.href='/api/actions.csv?ids='+ids}
-async function load(){render(await j('/api/report'))}
+async function load(){render(await j('/api/report'));loadRob();loadMath(mdept)}
+let mdept='';
+async function loadMath(d){try{const g=await j('/api/explain'+(d?('?department='+encodeURIComponent(d)):''));const e=g.department;mdept=e.department;
+  $('mdept').innerHTML=e.departments.map(x=>`<option ${x===mdept?'selected':''}>${x}</option>`).join('');
+  $('msteps').innerHTML=e.steps.map(t=>`<div class=step><b>${t.title}</b><div class=fm>${t.formula}</div><div class=mute>${t.working}</div><div class=res>= <b style="display:inline">${t.result}</b></div></div>`).join('');
+  $('mpols').innerHTML=g.policies.map(t=>`<div class=step><b>${t.policy}</b><div class=fm>${t.formula}</div><div class=mute>${t.working}</div></div>`).join('')}
+  catch(err){$('msteps').textContent='Could not load: '+err.message}}
+
+async function loadRob(){$('robnote').textContent='Computing 180 assumption scenarios…';
+  try{const g=await j('/api/robustness');const k=g.kinds;
+   $('kinds').innerHTML=[['Measured','measured','var(--good)','Counted from your data.'],['Estimated','estimated','var(--accent)','Computed with a range.'],['Assumed','assumed','var(--warn)','Sliders. Opinion.'],['Judgement','judgement','var(--bad)','A choice we made, shown so you can disagree.']]
+    .map(([t,key,col,sub])=>`<div class="card" style="margin:0"><b style="color:${col}">${t}</b> <span class=mute>${sub}</span><ul style="margin:6px 0 0;padding-left:18px">${k[key].map(i=>`<li>${i}</li>`).join('')}</ul></div>`).join('');
+   const lab=h=>h>=.95?'<span class=clear>holds</span>':h<=.05?'<span class=restrict>fails</span>':'<span class=uncertain>depends</span>';
+   $('robdec').innerHTML='<tr><th>Decision</th><th class=n>Holds in</th><th>Verdict</th><th>Note</th></tr>'+g.decisions.map(d=>`<tr><td>${d.claim}</td><td class=n>${pct(d.holds)}</td><td>${lab(d.holds)}</td><td class=mute>${d.note||''}</td></tr>`).join('');
+   $('robdep').innerHTML='<tr><th>Department ROI above zero</th><th class=n>Holds in</th><th>Verdict</th></tr>'+Object.entries(g.departments).map(([d,v])=>`<tr><td>${d}</td><td class=n>${pct(v.roi_positive)}</td><td>${lab(v.roi_positive)}</td></tr>`).join('');
+   $('robnote').textContent=`Each decision is re-run in ${g.scenarios} scenarios: realization ${g.grid.realization.map(x=>pct(x)).join(', ')}; elasticity ${g.grid.elasticity.join(', ')}; pay-per-use price ${g.grid.ppu_multiplier.join(', ')}x; seat savings realized ${g.grid.seat_savings_realized.map(x=>pct(x)).join(', ')}. "Holds" means true in at least 95% of them. Act on what holds; for the rest, get the missing number (a vendor quote, a pilot) before deciding.`}
+  catch(e){$('robnote').textContent='Could not compute: '+e.message}}
+
 let tm;function sliders(){$('rv').textContent=real.value+'%';$('ev').textContent=(elas.value/100).toFixed(1);$('cv').textContent=(cheap.value/100).toFixed(2);$('pv').textContent=(ppu.value/100).toFixed(1)+'x';
   clearTimeout(tm);tm=setTimeout(async()=>{try{render(await j('/api/assumptions',{method:'POST',headers:{'Content-Type':'application/json'},
-   body:JSON.stringify({realization:real.value/100,elasticity:elas.value/100,cheap_price_per_m:cheap.value/100,ppu_multiplier:ppu.value/100})}))}catch(e){$('uerr').textContent=e.message}},250)}
+   body:JSON.stringify({realization:real.value/100,elasticity:elas.value/100,cheap_price_per_m:cheap.value/100,ppu_multiplier:ppu.value/100})}));loadRob();loadMath(mdept)}catch(e){$('uerr').textContent=e.message}},250)}
 real.oninput=elas.oninput=cheap.oninput=ppu.oninput=sliders;
 $('file').onchange=async e=>{$('uerr').textContent='';const f=new FormData();f.append('file',e.target.files[0]);
-  try{render(await j('/api/upload',{method:'POST',body:f}));$('src').textContent=e.target.files[0].name}catch(err){$('uerr').textContent=err.message}};
-async function reset(){$('uerr').textContent='';render(await j('/api/reset',{method:'POST'}));$('src').textContent='synthetic company';real.value=50;elas.value=50;cheap.value=60;ppu.value=160;$('rv').textContent='50%';$('ev').textContent='0.5';$('cv').textContent='0.60';$('pv').textContent='1.6x'}
+  try{render(await j('/api/upload',{method:'POST',body:f}));loadRob();loadMath(mdept);$('src').textContent=e.target.files[0].name}catch(err){$('uerr').textContent=err.message}};
+async function reset(){$('uerr').textContent='';render(await j('/api/reset',{method:'POST'}));loadRob();loadMath(mdept);$('src').textContent='synthetic company';real.value=50;elas.value=50;cheap.value=60;ppu.value=160;$('rv').textContent='50%';$('ev').textContent='0.5';$('cv').textContent='0.60';$('pv').textContent='1.6x'}
 async function brief(){$('bb').disabled=true;$('brief').textContent='Thinking…';
   try{const b=await j('/api/brief');$('brief').textContent=b.brief+'\n\nmodel: '+b.model}catch(e){$('brief').innerHTML='<span class=err></span>';$('brief').firstChild.textContent=e.message}
   $('bb').disabled=false}

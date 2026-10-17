@@ -13,9 +13,14 @@ data, and lets you question the results in plain English. Answers come from NVID
   people who never adopted (difference-in-differences). Growth is a ratio, so an intern and a senior are comparable.
   Estimates are shrunk toward the department mean by how noisy individuals are, and every ROI carries a 95% range.
   A department whose range includes zero is labelled uncertain, and gets "review", never "restrict".
+- **Shows its working:** a "Show the math" section walks each department through nine steps with its own numbers
+  (cost, growth, control group, range, dollars, ROI, break-even, recoverable spend), plus how each budget policy is computed.
+- **Separates fact from opinion:** every number is labelled measured, estimated, assumed or judgement, and each decision is
+  re-run in 180 assumption scenarios to show which hold and which depend on assumptions.
 - **Checks that adopters were not already ahead:** compares adopters and non-adopters in the months before rollout and
   removes any pre-existing gap, with a warning when it is significant.
-- **Compares peers fairly:** overspend is judged against people of the same role and level, never the whole department.
+- **Compares peers fairly:** high spend is judged against people of the same role and level, never the whole department.
+  Interns and juniors are never capped below the department cap, since they iterate more while learning.
 - **Simulates four budget policies:** status quo, fixed, pay per use, variable by role. Ranked on net dollars and bill
   risk (extra cost if everyone spends at their own peak month), not on the ROI ratio, which rises whenever spend falls.
 - **Prices model routing:** what moving routine tokens to a cheaper open model saves, and the value put at risk.

@@ -48,6 +48,11 @@ Rules:
   assumed multiplier and the break-even multiplier from pay_per_use_breakeven. Tell the user to get a real quote.
 - If summary.company.selection.significant is true, warn that adopters were already pulling ahead before rollout,
   that this was removed, and that the effect estimate is less certain.
+- If asked how subjective or reliable the results are, call get_robustness. Say which parts are measured, which are
+  estimated with a range, which are assumptions, and which decisions hold in what share of scenarios. Do not claim
+  more certainty than a 'depends on assumptions' verdict allows.
+- Token caps are peer norms, not a statement of need. Interns and juniors are floored at the department cap because
+  they iterate more while learning. Say this if asked about caps by level.
 - Be direct. Lead with the answer, then the two or three numbers that support it. No filler."""
 
 TOOLS = [
@@ -57,6 +62,11 @@ TOOLS = [
     {"type": "function", "function": {
         "name": "get_waste", "description": "Recoverable monthly spend: unused seats plus spend above what "
         "ROI-positive peers spend, company-wide and per department, with annual total.",
+        "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {
+        "name": "get_robustness", "description": "How subjective the conclusions are: which decisions hold in what share "
+        "of 180 assumption scenarios, which departments are positive or depend on assumptions, and which numbers are "
+        "measured, estimated, assumed or judgement.",
         "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {
         "name": "get_actions", "description": "Proposed changes (reclaim seats, cap token spend) per department and level, "
@@ -131,6 +141,8 @@ class Analyst:
             return an.summary(ds, a)
         if name == "get_waste":
             return an.waste(ds, a)
+        if name == "get_robustness":
+            return an.robustness(ds, a)
         if name == "get_actions":
             return an.actions(ds, a)
         if name == "get_routing":
