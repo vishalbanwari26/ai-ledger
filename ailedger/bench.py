@@ -17,11 +17,16 @@ from . import evidence as ev
 from .data import Dataset
 
 Z95 = 1.96
+NEAR_MISS_SHARE = 0.25  # a margin under this share of the range's half-width is reported as 'only just'
 
 
 def _value_per_unit_effect(es: list[an.Employee], a: an.Assumptions) -> float:
     """Dollars of monthly value per 1.00 (100%) of effect, if every user gained the same share of their baseline."""
-    return sum(a.realization * e.base * e.hpu * e.rate for e in es if e.treated)  # type: ignore[attr-defined]
+    return sum(a.realization * e.base * e.unit_value for e in es if e.treated)
+
+
+def _fixed_benefit(es: list[an.Employee]) -> float:
+    return sum(e.benefit for e in es if e.treated)
 
 
 def breakeven(ds: Dataset, a: an.Assumptions) -> dict:
@@ -29,15 +34,15 @@ def breakeven(ds: Dataset, a: an.Assumptions) -> dict:
     c = an.summary(ds, a)["company"]
 
     def one(group: list[an.Employee], measured: float, lo: float, hi: float) -> dict:
-        cost, s = sum(e.cost for e in group), _value_per_unit_effect(group, a)
-        be = cost / s if s else None
+        cost, s, fixed = sum(e.cost for e in group), _value_per_unit_effect(group, a), _fixed_benefit(group)
+        be = max(0.0, cost - fixed) / s if s else None
         if be is None:
             verdict = "no users"
-        elif lo > be:  # a margin under a quarter of the range's half-width is "just", not "clearly"
-            verdict = ("above break-even, but only just: the low end of the range is at it" if (lo - be) < 0.25 * (measured - lo)
+        elif lo > be:  # a small margin is "just", not "clearly"
+            verdict = ("above break-even, but only just: the low end of the range is at it" if (lo - be) < NEAR_MISS_SHARE * (measured - lo)
                        else "clearly above break-even")
         elif hi < be:
-            verdict = ("below break-even, but only just: the top of the range is at it" if (be - hi) < 0.25 * (hi - measured)
+            verdict = ("below break-even, but only just: the top of the range is at it" if (be - hi) < NEAR_MISS_SHARE * (hi - measured)
                        else "clearly below break-even")
         else:
             verdict = "not distinguishable from break-even"
@@ -56,7 +61,7 @@ def breakeven(ds: Dataset, a: an.Assumptions) -> dict:
 
 def scenarios(ds: Dataset, a: an.Assumptions) -> list[dict]:
     es, _ = an._analyze(ds, a)
-    cost, s = sum(e.cost for e in es), _value_per_unit_effect(es, a)
+    cost, s, fixed = sum(e.cost for e in es), _value_per_unit_effect(es, a), _fixed_benefit(es)
     c = an.summary(ds, a)["company"]
     rows = [("No effect", 0.0, "scenario"), ("Your measured effect", c["did_lift"], "measured")]
     seen: set[float] = set()
@@ -67,7 +72,7 @@ def scenarios(ds: Dataset, a: an.Assumptions) -> list[dict]:
         rows.append((f"{x['short']} ({x['year']})", x["value"] / 100, x["id"]))
     out = []
     for label, e, key in rows:
-        v = e * s
+        v = e * s + fixed
         out.append(dict(label=label, key=key, effect=round(e, 4), value=round(v, 2), net=round(v - cost, 2),
                         back_per_dollar=round(v / cost, 3) if cost else 0.0, pays_off=v >= cost))
     return out

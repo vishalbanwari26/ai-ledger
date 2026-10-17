@@ -22,6 +22,12 @@ data, and lets you question the results in plain English. Answers come from NVID
   and marked with what was verified and what was left out ([docs/evidence.md](docs/evidence.md)). Context, not proof. It also puts the studies' metrics to work: the break-even effect this spend needs,
   what-if returns if the effect matched each published study, the measured effect by experience level, and a check of
   what employees say against what was measured.
+- **Lets you define what AI output is worth:** the Your value tab sets, per department, how a unit of output is valued (hours x
+  hourly rate from the data, or your own dollar figure per unit) plus an optional benefit per user. Every result updates, a
+  before-and-after shows what changed, and the definition can be downloaded as JSON.
+- **References every value:** a Sources tab and an ⓘ next to each value say where it comes from: a published study, a public
+  price list, our rule of thumb, or an assumption with no source. Values are read from the running code, and a test keeps
+  [docs/sources.md](docs/sources.md) in sync and fails if an assumption is added without a source note.
 - **Explains every term:** a Glossary tab with plain definitions and worked examples that use the live numbers.
 - **Separates fact from opinion:** every number is labelled measured, estimated, assumed or judgement, and each decision is
   re-run in 180 assumption scenarios to show which hold and which depend on assumptions.

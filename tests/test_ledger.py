@@ -664,3 +664,179 @@ def test_breakeven_verdict_does_not_overclaim_a_near_miss():
     margin, half = c["low"] - c["breakeven"], c["measured"] - c["low"]
     assert 0 <= margin < 0.25 * half                      # the low end sits right at break-even in the default company
     assert c["verdict"].startswith("above break-even, but only just")
+
+
+# ---------------------------------------------------------------- your own definition of value
+
+import json as _json
+from dataclasses import replace as _replace
+
+
+def _with_defs(defs):
+    return _replace(an.Assumptions(), value_json=_json.dumps(defs))
+
+
+def test_no_definition_means_hours_times_rate_as_before():
+    ds = data.generate()
+    plain, empty = an.summary(ds, an.Assumptions())["company"], an.summary(ds, _with_defs({}))["company"]
+    assert plain["monthly_value"] == empty["monthly_value"]
+    es, _ = an._analyze(ds, an.Assumptions())
+    assert all(abs(e.unit_value - e.hpu * e.rate) < 1e-9 for e in es if e.treated)
+
+
+def test_dollars_per_unit_scales_that_department_only():
+    ds = data.generate()
+    a1, a2 = _with_defs({"Sales": {"mode": "unit", "value_per_unit": 200}}), _with_defs({"Sales": {"mode": "unit", "value_per_unit": 400}})
+    d1, d2 = an.summary(ds, a1)["departments"], an.summary(ds, a2)["departments"]
+    assert abs(d2["Sales"]["monthly_value"] / d1["Sales"]["monthly_value"] - 2.0) < 0.01   # value is linear in the unit value
+    assert d1["Engineering"]["monthly_value"] == d2["Engineering"]["monthly_value"]        # other departments untouched
+    assert d1["Engineering"]["monthly_value"] == an.summary(ds, an.Assumptions())["departments"]["Engineering"]["monthly_value"]
+
+
+def test_benefit_per_user_adds_exactly_that_much_per_active_user():
+    ds = data.generate()
+    base = an.summary(ds, an.Assumptions())["departments"]["Legal"]
+    plus = an.summary(ds, _with_defs({"Legal": {"benefit_per_user": 25}}))["departments"]["Legal"]
+    users = sum(1 for e in an.employees(ds, an.Assumptions()) if e.department == "Legal" and e.treated)
+    assert abs((plus["monthly_value"] - base["monthly_value"]) - 25 * users) < 1.0
+    assert plus["value_low"] - base["value_low"] > 0 and abs((plus["value_high"] - base["value_high"]) - 25 * users) < 1.0
+
+
+def test_default_definition_applies_to_departments_without_their_own():
+    ds = data.generate()
+    a = _with_defs({"*": {"benefit_per_user": 10}, "Sales": {"benefit_per_user": 0}})
+    d = an.summary(ds, a)["departments"]; base = an.summary(ds, an.Assumptions())["departments"]
+    assert d["Sales"]["monthly_value"] == base["Sales"]["monthly_value"]       # its own definition wins
+    assert d["Finance"]["monthly_value"] > base["Finance"]["monthly_value"]     # the default reached it
+
+
+def test_definition_changes_breakeven_consistently():
+    from ailedger import bench
+    ds = data.generate()
+    plain = bench.breakeven(ds, an.Assumptions())["company"]["breakeven"]
+    lots = bench.breakeven(ds, _with_defs({"*": {"benefit_per_user": 50}}))["company"]["breakeven"]
+    assert lots < plain                                                         # a fixed benefit lowers the effect you need
+    assert bench.breakeven(ds, _with_defs({"*": {"benefit_per_user": 10_000}}))["company"]["breakeven"] == 0.0
+
+
+def test_break_even_realization_still_returns_cost_with_a_fixed_benefit():
+    ds, defs = data.generate(), {"Engineering": {"benefit_per_user": 30}}
+    a = _with_defs(defs)
+    d = an.summary(ds, a)["departments"]["Engineering"]
+    again = an.summary(ds, _replace(a, realization=d["break_even_realization"]))["departments"]["Engineering"]
+    assert abs(again["monthly_value"] - again["monthly_cost"]) < again["monthly_cost"] * 0.02
+
+
+def test_value_definition_validation():
+    depts = ["Sales", "Legal"]
+    ok = an.validate_value_defs({"Sales": {"mode": "unit", "value_per_unit": "300"}, "*": {"benefit_per_user": 5}}, depts)
+    assert ok["Sales"]["value_per_unit"] == 300.0 and ok["*"]["benefit_per_user"] == 5.0
+    for bad in ({"Nope": {"benefit_per_user": 1}}, {"Sales": {"value_per_unit": -1}}, {"Sales": {"hourly_rate": 1e9}},
+                {"Sales": {"mode": "magic"}}, {"Sales": {"unknown": 1}}, {"Sales": {"mode": "unit"}}, {"Sales": {"benefit_per_user": "abc"}}, [], {"Sales": 5}):
+        try:
+            an.validate_value_defs(bad, depts)
+        except ValueError:
+            continue
+        raise AssertionError(f"accepted {bad}")
+
+
+def test_value_api_round_trip_and_sliders_keep_the_definition():
+    c = TestClient(app)
+    base = c.get("/api/report").json()["summary"]["company"]["monthly_value"]
+    r = c.post("/api/value", json={"defs": {"Sales": {"mode": "unit", "value_per_unit": 400}}}).json()
+    assert r["value"]["custom"] and r["summary"]["company"]["monthly_value"] > base
+    r2 = c.post("/api/assumptions", json={"realization": 0.5, "elasticity": 0.6, "cheap_price_per_m": 0.6}).json()
+    assert r2["value"]["custom"]                                                   # moving a slider must not wipe it
+    assert c.post("/api/value", json={"defs": {"Nope": {"benefit_per_user": 1}}}).status_code == 422
+    assert c.get("/api/value").json()["defs"]["Sales"]["value_per_unit"] == 400
+    r3 = c.post("/api/value", json={"defs": {}}).json()
+    assert not r3["value"]["custom"] and r3["summary"]["company"]["monthly_value"] == base
+
+
+def test_upload_clears_a_stale_definition():
+    c = TestClient(app)
+    c.post("/api/value", json={"defs": {"Sales": {"benefit_per_user": 9}}})
+    csv_text = data.generate(scale=0.05).to_csv().encode()
+    r = c.post("/api/upload", files={"file": ("x.csv", csv_text)})
+    assert r.status_code == 200 and not r.json()["value"]["custom"]
+
+
+def test_explain_names_your_definition():
+    ds = data.generate()
+    step = an.explain(ds, _with_defs({"Sales": {"mode": "unit", "value_per_unit": 400}}), "Sales")["steps"][6]
+    assert "Your definition" in step["formula"] and "$400.00 per unit" in step["formula"]
+    assert "Your definition" not in an.explain(ds, an.Assumptions(), "Sales")["steps"][6]["formula"]
+
+
+# ---------------------------------------------------------------- every value has a referenced origin
+
+def test_every_assumption_is_explained_in_the_registry():
+    from ailedger import sources as src
+    reg = {e["id"] for e in src.registry()["entries"]}
+    fields = set(an.Assumptions().__dict__)
+    assert fields <= set(src.ENTRY_FIELDS), f"unexplained assumptions: {fields - set(src.ENTRY_FIELDS)}"
+    assert set(src.ENTRY_FIELDS.values()) <= reg
+
+
+def test_registry_entries_are_honestly_labelled_and_linked():
+    from ailedger import sources as src
+    r = src.registry()
+    ids = [e["id"] for e in r["entries"]]
+    assert len(ids) == len(set(ids))
+    for e in r["entries"]:
+        assert e["kind"] in src.KINDS and e["why"].strip() and e["where"].strip() and e["value"].strip()
+        for ref in e["refs"]:
+            assert ref in r["refs"] and r["refs"][ref]["url"].startswith("https://"), (e["id"], ref)
+        if e["kind"] == "published":
+            assert any(x.startswith("study:") for x in e["refs"]), e["id"]      # a published number needs a study
+    # anything anchored to the unconfirmed third-party listing must say so
+    for e in r["entries"]:
+        if "nebius-prices-listing" in e["refs"]:
+            assert "third-party" in e["caveat"].lower()
+    assert r["refs"]["nebius-prices-listing"]["confirmed"] is False
+    assert all(v["confirmed"] for k, v in r["refs"].items() if k != "nebius-prices-listing")
+
+
+def test_registry_values_come_from_the_live_code(monkeypatch):
+    from ailedger import sources as src
+    by = lambda: {e["id"]: e for e in src.registry()["entries"]}  # noqa: E731
+    assert by()["high_spend"]["value"].startswith(f"{an.HIGH_SPEND_MULT:g}x")
+    monkeypatch.setattr(an, "HIGH_SPEND_MULT", 2.0)
+    assert by()["high_spend"]["value"].startswith("2x")                    # change the constant, the reference follows
+    monkeypatch.setattr(data, "TOKEN_PRICE_PER_M", 7.0)
+    assert "$7.00" in by()["frontier_token_price"]["value"]
+
+
+def test_registry_shows_the_sessions_current_slider_values():
+    from ailedger import sources as src
+    a = _replace(an.Assumptions(), realization=0.3, ppu_multiplier=2.0)
+    e = {x["id"]: x for x in src.registry(a)["entries"]}
+    assert e["realization"]["value"] == "50%" and e["realization"]["current"] == "30%"    # default and what you set
+    assert e["ppu_multiplier"]["current"] == "2x"
+    assert src.registry(_with_defs({"Sales": {"benefit_per_user": 5}}))["entries"][1]["kind"] == "yours"
+
+
+def test_worked_steps_and_policies_carry_references():
+    from ailedger import sources as src
+    ds, a = data.generate(), an.Assumptions()
+    reg = {e["id"] for e in src.registry()["entries"]}
+    steps = an.explain(ds, a, "Sales")["steps"]
+    assert all("refs" in s for s in steps) and {"realization", "idle_sessions", "z95"} <= {r for s in steps for r in s["refs"]}
+    assert {r for s in steps for r in s["refs"]} <= reg
+    pols = an.explain_policies(ds, a)
+    assert {r for p in pols for r in p["refs"]} <= reg and any("ppu_multiplier" in p["refs"] for p in pols)
+
+
+def test_sources_endpoint():
+    c = TestClient(app)
+    g = c.get("/api/sources").json()
+    assert g["read_on"] and len(g["entries"]) >= 25 and "assumption" in g["kinds"]
+    assert any(e["slider"] == "realization" for e in g["entries"])
+
+
+def test_sources_document_is_in_sync_with_the_code():
+    import importlib.util, pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent
+    spec = importlib.util.spec_from_file_location("build_sources_doc", root / "tools/build_sources_doc.py")
+    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+    assert (root / "docs/sources.md").read_text() == mod.render(), "run: python tools/build_sources_doc.py"

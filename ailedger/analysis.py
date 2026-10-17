@@ -20,6 +20,7 @@ steady rate. Adopters who improve for reasons that start at rollout cannot be to
 """
 from __future__ import annotations
 
+import json
 import statistics as st
 from dataclasses import dataclass, field
 
@@ -27,6 +28,10 @@ from .data import Dataset, TOKEN_PRICE_PER_M
 
 Z95 = 1.96
 LEARNING_LEVELS = ("intern", "junior")
+HIGH_SPEND_MULT = 1.5      # a seat is 'high spend' above this multiple of its peers' median token spend (and ROI below 0)
+DRIFT_ALERT = 0.15         # monthly spend jump that raises a drift alert
+DRIFT_MIN_DOLLARS = 500.0  # ... and only if it is also at least this many dollars
+PEER_PERCENTILE = 0.75     # token caps follow this percentile of ROI-positive peers' spend
 # Share of each department's tokens that are routine (summaries, drafts, lookups) and could run on a
 # cheaper open model. These are planning assumptions, not measurements.
 ROUTINE_SHARE = {"Engineering": 0.5, "Support": 0.8, "Sales": 0.7, "Marketing": 0.6, "Finance": 0.6, "Legal": 0.4}
@@ -48,6 +53,7 @@ class Assumptions:
     adjust_pretrend: bool = True      # remove a growth gap that adopters already had before rollout
     ppu_multiplier: float = 1.6       # pay per use: list price of tokens vs the seat-plan rate. Get a real quote.
     ppu_friction: float = 0.05        # pay per use: share of value lost because people ration metered use
+    value_json: str = ""              # your definition of value per department (JSON); empty = hours x hourly rate from the data
 
 
 @dataclass
@@ -65,6 +71,8 @@ class Employee:
     own_baseline: bool = False   # has pre-rollout months of their own
     growth: float | None = None  # output growth vs own baseline
     base: float = 0.0            # baseline output per month (own first months, or implied)
+    unit_value: float = 0.0      # dollars one unit of output is worth (your definition, or hours x rate)
+    benefit: float = 0.0         # extra dollars a month per active user, if you defined one
     lift: float = 0.0            # estimated AI effect (shrunk DiD), as a fraction of baseline output
     value: float = 0.0           # avg monthly dollar value after realization
     value_low: float = 0.0
@@ -78,11 +86,75 @@ class Employee:
 
 # Only these assumptions change the per-person estimates. The others (elasticity, prices, seat savings) only
 # change what policies do with them, so robustness sweeps can reuse the same estimates.
-_ANALYSIS_FIELDS = ("window_months", "pre_months", "realization", "idle_sessions", "min_cohort", "adjust_pretrend")
+_ANALYSIS_FIELDS = ("window_months", "pre_months", "realization", "idle_sessions", "min_cohort", "adjust_pretrend", "value_json")
 
 
 def _akey(a: "Assumptions") -> tuple:
     return tuple((f, getattr(a, f)) for f in _ANALYSIS_FIELDS)
+
+
+VALUE_MODES = ("time", "unit")
+VALUE_LIMITS = dict(value_per_unit=(0.0, 1_000_000.0), hours_per_unit=(0.0, 1000.0), hourly_rate=(0.0, 10_000.0),
+                    benefit_per_user=(0.0, 100_000.0))
+
+
+def value_defs(a: "Assumptions") -> dict:
+    """Parsed value definitions: {"*": {...}, "<department>": {...}}. Bad JSON is treated as no definition."""
+    try:
+        raw = json.loads(a.value_json) if a.value_json else {}
+    except ValueError:
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def value_def(a: "Assumptions", dept: str) -> dict:
+    raw = value_defs(a)
+    d = dict(raw.get("*", {}))
+    d.update(raw.get(dept, {}))
+    return d
+
+
+def unit_value_for(vd: dict, hpu: float, rate: float) -> float:
+    """Dollars one unit of output is worth. Mode 'unit' uses your dollar figure; otherwise hours x hourly rate."""
+    if vd.get("mode") == "unit" and vd.get("value_per_unit") is not None:
+        return float(vd["value_per_unit"])
+    return float(vd.get("hours_per_unit", hpu)) * float(vd.get("hourly_rate", rate))
+
+
+def validate_value_defs(raw: object, departments: list[str]) -> dict:
+    """Check a user's value definition and return a clean copy. Raises ValueError with a plain message."""
+    if not isinstance(raw, dict):
+        raise ValueError("The value definition must be an object keyed by department.")
+    clean: dict[str, dict] = {}
+    for key, d in raw.items():
+        if key != "*" and key not in departments:
+            raise ValueError(f"Unknown department: {key}")
+        if not isinstance(d, dict):
+            raise ValueError(f"The definition for {key} must be an object.")
+        out: dict = {}
+        for k, v in d.items():
+            if k == "mode":
+                if v not in VALUE_MODES:
+                    raise ValueError("mode must be 'time' or 'unit'.")
+                out[k] = v
+            elif k in VALUE_LIMITS:
+                if v is None or v == "":
+                    continue
+                try:
+                    num = float(v)
+                except (TypeError, ValueError):
+                    raise ValueError(f"{k} for {key} must be a number.")
+                lo, hi = VALUE_LIMITS[k]
+                if not (lo <= num <= hi) or num != num:
+                    raise ValueError(f"{k} for {key} must be between {lo:g} and {hi:g}.")
+                out[k] = num
+            else:
+                raise ValueError(f"Unknown field: {k}")
+        if out.get("mode") == "unit" and "value_per_unit" not in out:
+            raise ValueError(f"Give a value per unit for {key}, or switch it to hours x hourly rate.")
+        if out:
+            clean[key] = out
+    return clean
 
 
 def _var(xs: list[float]) -> float:
@@ -168,6 +240,8 @@ def _analyze(ds: Dataset, a: Assumptions) -> tuple[list[Employee], dict]:
         stats[d] = dict(naive_lift=naive, did_lift=did, se=se, ci_low=did - Z95 * se, ci_high=did + Z95 * se,
                         control_n=len(ctrl), control_pooled=pooled, treated_n=len(tr), control_growth=c_eff, control_raw=c_raw,
                         shrink=shrink)
+        vd = value_def(a, d)
+        benefit = float(vd.get("benefit_per_user", 0.0))
         for e in group:
             if not e.treated:
                 continue  # did not use it: no AI value, whatever their output did
@@ -175,10 +249,12 @@ def _analyze(ds: Dataset, a: Assumptions) -> tuple[list[Employee], dict]:
             e.lift = did + shrink * (lift_hat - did)
             base = units_pre[e.employee_id] if e.employee_id in units_pre else units_win[e.employee_id] / ((1 + did) * (1 + c_eff))
             e.base = base
-            scale = a.realization * base * e.hpu * e.rate  # type: ignore[attr-defined]
-            e.value = max(0.0, e.lift * scale)
-            e.value_low = max(0.0, (e.lift - Z95 * se) * scale)
-            e.value_high = max(0.0, (e.lift + Z95 * se) * scale)
+            e.unit_value = unit_value_for(vd, e.hpu, e.rate)  # type: ignore[attr-defined]
+            e.benefit = benefit
+            scale = a.realization * base * e.unit_value
+            e.value = max(0.0, e.lift * scale) + benefit
+            e.value_low = max(0.0, (e.lift - Z95 * se) * scale) + benefit
+            e.value_high = max(0.0, (e.lift + Z95 * se) * scale) + benefit
 
     # --- segments, judged against peers of the same role AND level (an intern is not a senior)
     peers = _peer_median(es, a.min_cohort)
@@ -189,7 +265,7 @@ def _analyze(ds: Dataset, a: Assumptions) -> tuple[list[Employee], dict]:
             e.segment = "high-return"
         elif e.roi >= 0.0:
             e.segment = "break-even"
-        elif e.token_cost > 1.5 * peers(e):
+        elif e.token_cost > HIGH_SPEND_MULT * peers(e):
             e.segment = "high-spend"
         else:
             e.segment = "low-return"
@@ -235,6 +311,15 @@ def employees(ds: Dataset, a: Assumptions) -> list[Employee]:
     return _analyze(ds, a)[0]
 
 
+def _break_even_realization(es: list[Employee], a: Assumptions, cost: float, value: float) -> float | None:
+    """Share of the estimated gain that must be real for the group to pay for itself. A fixed benefit counts in full."""
+    fixed = sum(e.benefit for e in es)
+    gain = value - fixed
+    if gain <= 0:
+        return None
+    return round(a.realization * max(0.0, cost - fixed) / gain, 3)
+
+
 def _roll(es: list[Employee], a: Assumptions) -> dict:
     cost = sum(e.cost for e in es)
     value = sum(e.value for e in es)
@@ -247,7 +332,7 @@ def _roll(es: list[Employee], a: Assumptions) -> dict:
         value_low=round(low, 2), value_high=round(high, 2), net=round(value - cost, 2),
         roi=r(value), roi_low=r(low), roi_high=r(high),
         confidence="clear" if r(low) > 0 or r(high) < 0 else "uncertain",
-        break_even_realization=round(a.realization * cost / value, 3) if value > 0 else None,
+        break_even_realization=_break_even_realization(es, a, cost, value),
         cost_per_head=round(cost / len(es), 2) if es else 0.0,
         idle=len(idle), idle_waste=round(sum(e.seat_cost for e in idle), 2),
         high_spend=sum(1 for e in es if e.segment == "high-spend"),
@@ -338,7 +423,7 @@ def _cap_for(e: Employee, caps: dict[tuple, float]) -> float:
 def waste(ds: Dataset, a: Assumptions) -> dict:
     """Recoverable monthly spend: unused seats (after contract friction) plus high spend above peer norms."""
     es = employees(ds, a)
-    caps = _caps(es, a, 0.75)
+    caps = _caps(es, a, PEER_PERCENTILE)
     per: dict[str, dict] = {}
     for e in es:
         d = per.setdefault(e.department, dict(idle_seats=0, idle_cost=0.0, over_people=0, over_cost=0.0))
@@ -370,7 +455,7 @@ def actions(ds: Dataset, a: Assumptions) -> list[dict]:
     """Proposed changes, one row per department and level, each with a reason. Approve before acting.
     Groups under `min_group` people are merged per department; no row ever identifies a person."""
     es = employees(ds, a)
-    caps = _caps(es, a, 0.75)
+    caps = _caps(es, a, PEER_PERCENTILE)
     buckets: dict[tuple, list[Employee]] = {}
     for e in es:
         if e.segment in ("idle", "high-spend"):
@@ -441,7 +526,7 @@ def routing(ds: Dataset, a: Assumptions) -> dict:
 
 # ---------------------------------------------------------------- spend trend and drift alerts
 
-def trend(ds: Dataset, drift: float = 0.15, min_dollars: float = 500.0) -> dict:
+def trend(ds: Dataset, drift: float = DRIFT_ALERT, min_dollars: float = DRIFT_MIN_DOLLARS) -> dict:
     months = sorted({r["month"] for r in ds.rows})
     series: dict[str, dict[str, float]] = {}
     for r in ds.rows:
@@ -470,7 +555,7 @@ class Policy:
     reclaim_idle: bool = False           # idle employees lose the seat
     cap_mode: str = "none"               # none | flat | role
     flat_cap: float = 0.0                # monthly token $ cap per employee
-    cap_pctile: float = 0.75             # for role mode: percentile of ROI-positive peer spend
+    cap_pctile: float = PEER_PERCENTILE             # for role mode: percentile of ROI-positive peer spend
     pooled: bool = False                 # unused allowance pooled within a department
     price_multiplier: float = 1.0        # list-price premium when buying tokens without a seat plan
     friction: float = 0.0                # share of value lost because people ration use they can see being metered
@@ -588,7 +673,7 @@ def plan_savings(ds: Dataset, a: Assumptions) -> dict:
     """Where the 'Variable by role' plan's saving comes from, per department, and what it leaves on the table."""
     from dataclasses import replace
     es = employees(ds, a)
-    caps = _caps(es, a, 0.75)
+    caps = _caps(es, a, PEER_PERCENTILE)
     plan = next(p for p in standard_policies(a) if p.name == "Variable by role")
     hard = replace(plan, pooled=False)  # same caps, enforced per person instead of pooled in the department
     sq = Policy("Status quo", "")
@@ -609,7 +694,7 @@ def plan_savings(ds: Dataset, a: Assumptions) -> dict:
 def budget_recommendations(ds: Dataset, a: Assumptions) -> dict:
     """Per-department verdict: fixed or variable, and a per-head monthly budget by level."""
     es = employees(ds, a)
-    caps = _caps(es, a, 0.75)
+    caps = _caps(es, a, PEER_PERCENTILE)
     plan = plan_savings(ds, a)["by_department"]
     out = {}
     for d in sorted({e.department for e in es}):
@@ -763,6 +848,32 @@ def _p(x: float, d: int = 1) -> str:
     return f"{x * 100:.{d}f}%"
 
 
+def value_info(ds: Dataset, a: Assumptions) -> dict:
+    """What the Your-value editor shows: the data's own figures, your definition, and what is in effect now."""
+    from .data import UNIT_NAMES
+    es, stats = _analyze(ds, a)
+    out = {}
+    for d in sorted(stats):
+        g = [e for e in es if e.department == d]
+        tr = [e for e in g if e.treated]
+        raw = value_defs(a)
+        vd = value_def(a, d)
+        out[d] = dict(
+            unit=UNIT_NAMES.get(d, "unit of output"),
+            data_hours_per_unit=round(st.mean(e.hpu for e in g), 4), data_hourly_rate=round(st.mean(e.rate for e in g), 2),  # type: ignore[attr-defined]
+            data_unit_value=round(st.mean(e.hpu * e.rate for e in g), 2),  # type: ignore[attr-defined]
+            effective_unit_value=round(st.mean(e.unit_value for e in tr), 2) if tr else 0.0,
+            benefit_per_user=float(vd.get("benefit_per_user", 0.0)), mode=vd.get("mode", "time"),
+            defined=d in raw, users=len(tr), value=round(sum(e.value for e in g), 2))
+    return dict(departments=out, defs=value_defs(a), default=value_defs(a).get("*", {}),
+                custom=bool(value_defs(a)), limits=VALUE_LIMITS)
+
+
+_STEP_REFS = {'1. What it costs': ['seat_costs'], '2. Who is using AI': ['idle_sessions'], '3. How much did output grow?': ['windows'], '4. Remove what would have happened anyway': ['windows', 'pretrend'], '5. How sure are we?': ['z95'], '6. Shrink noisy individual estimates': [], '7. Turn the effect into dollars': ['realization', 'value_unit'], '8. ROI and break-even': ['realization'], '9. Recoverable spend in this department': ['seat_savings_realized', 'high_spend', 'peer_percentile', 'min_cohort']}
+_POLICY_REFS = {"Status quo": ["seat_costs"], "Fixed budget": ["fixed_cap", "elasticity"], "Pay per use": ["ppu_multiplier", "ppu_friction"],
+                "Variable by role": ["seat_savings_realized", "peer_percentile", "min_cohort", "learning_floor"], "Bill risk": []}
+
+
 def explain(ds: Dataset, a: Assumptions, dept: str | None = None) -> dict:
     """Step-by-step derivation of one department's ROI with its own numbers. Aggregates only, no individuals."""
     es, stats = _analyze(ds, a)
@@ -780,9 +891,11 @@ def explain(ds: Dataset, a: Assumptions, dept: str | None = None) -> dict:
     value = sum(e.value for e in g)
     roll = _roll(g, a)
     mean = lambda f: st.mean(f(e) for e in tr) if tr else 0.0  # noqa: E731
-    base, hpu, rate = mean(lambda e: e.base), mean(lambda e: e.hpu), mean(lambda e: e.rate)  # type: ignore[attr-defined]
+    base, uv, benefit = mean(lambda e: e.base), mean(lambda e: e.unit_value), mean(lambda e: e.benefit)
+    vd = value_def(a, dept)
+    custom = bool(vd)
     lift = mean(lambda e: e.lift)
-    caps = _caps(es, a, 0.75)
+    caps = _caps(es, a, PEER_PERCENTILE)
     hs = [e for e in g if e.segment == "high-spend"]
     over = sum(max(0.0, e.token_cost - _cap_for(e, caps)) for e in hs)
     steps = [
@@ -819,9 +932,11 @@ def explain(ds: Dataset, a: Assumptions, dept: str | None = None) -> dict:
                      "toward the department average. Nobody is ranked on their own number.",
              result=f"w = {st_['shrink']:.2f}"),
         dict(title="7. Turn the effect into dollars",
-             formula="value per user = realization x effect x baseline output x hours per unit x hourly rate",
-             working=(f"Typical user: {_p(a.realization, 0)} x {_p(lift)} x {base:,.1f} units x {hpu:g} h x ${rate:,.0f}/h "
-                      f"= {_m(a.realization * lift * base * hpu * rate)} a month. Summed over every user (each with their "
+             formula=("value per user = realization x effect x baseline output x dollars per unit" + (" + extra benefit per user" if benefit else "")
+                      + (". Your definition: " + (f"${vd['value_per_unit']:,.2f} per unit" if vd.get("mode") == "unit" else "hours x hourly rate") if custom else "")),
+             working=(f"Typical user: {_p(a.realization, 0)} x {_p(lift)} x {base:,.1f} units x ${uv:,.2f} per unit"
+                      + (f" + ${benefit:,.0f}" if benefit else "")
+                      + f" = {_m(a.realization * lift * base * uv + benefit)} a month. Summed over every user (each with their "
                       f"own numbers): {_m(value)}. Idle seats are valued at 0."),
              result=f"{_m(value)} a month (range {_m(roll['value_low'])} to {_m(roll['value_high'])})"),
         dict(title="8. ROI and break-even",
@@ -837,6 +952,8 @@ def explain(ds: Dataset, a: Assumptions, dept: str | None = None) -> dict:
                      f"{len(hs)} high-spend seats, {_m(over)} above their peer cap.",
              result=f"{_m(len(un) * seat * a.seat_savings_realized + over)} a month"),
     ]
+    for st_step in steps:
+        st_step["refs"] = _STEP_REFS.get(st_step["title"], [])
     return dict(department=dept, departments=depts, steps=steps)
 
 
@@ -847,7 +964,7 @@ def explain_policies(ds: Dataset, a: Assumptions) -> list[dict]:
     idle = [e for e in es if e.segment == "idle"]
     by = {r["name"]: r for r in pols}
     f = lambda r: f"cost {_m(r['monthly_cost'])}, value {_m(r['monthly_value'])}, net {_m(r['net'])}"  # noqa: E731
-    return [
+    rows = [
         dict(policy="Status quo", formula="cost = sum(seat + token spend). value = sum(each person's value).",
              working=f(by["Status quo"])),
         dict(policy="Fixed budget",
@@ -865,6 +982,9 @@ def explain_policies(ds: Dataset, a: Assumptions) -> list[dict]:
              working="; ".join(f"{r['name']} {_m(r['worst_case_cost'])} / {_m(r['monthly_cost'])} - 1 = {_p(r['bill_risk'], 0)}"
                                for r in pols)),
     ]
+    for r in rows:
+        r["refs"] = _POLICY_REFS.get(r["policy"], [])
+    return rows
 
 
 # ---------------------------------------------------------------- output over time, for the control-group chart

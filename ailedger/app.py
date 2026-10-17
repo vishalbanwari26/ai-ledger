@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import os
 import secrets
 import time
 from collections import OrderedDict, deque
+from dataclasses import replace
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
@@ -15,6 +17,7 @@ from . import analysis as an
 from . import data
 from . import bench
 from . import evidence as ev
+from . import sources
 from .llm import Analyst
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
@@ -60,7 +63,7 @@ def _report(st: Analyst) -> dict:
                 budgets=an.budget_recommendations(st.ds, a), waste=an.waste(st.ds, a), plan=an.plan_savings(st.ds, a), output_index=an.output_index(st.ds, a),
                 actions=an.actions(st.ds, a), routing=an.routing(st.ds, a), trend=an.trend(st.ds),
                 validation=an.validate(st.ds, a), policy_assumptions=an.POLICY_ASSUMPTIONS, ppu_breakeven=an.pay_per_use_breakeven(st.ds, a),
-                unit_names=data.UNIT_NAMES, rows=len(st.ds.rows))
+                value=an.value_info(st.ds, a), unit_names=data.UNIT_NAMES, rows=len(st.ds.rows))
 
 
 @app.get("/")
@@ -76,6 +79,11 @@ def healthz():
 @app.get("/api/report")
 def report(request: Request, response: Response):
     return _report(get_state(request, response))
+
+
+@app.get("/api/sources")
+def get_sources(request: Request, response: Response):
+    return sources.registry(get_state(request, response).assumptions)
 
 
 @app.get("/api/evidence")
@@ -98,6 +106,29 @@ def robustness(request: Request, response: Response):
     return an.robustness(st.ds, st.assumptions)
 
 
+class ValueBody(BaseModel):
+    defs: dict = {}
+
+
+@app.get("/api/value")
+def get_value(request: Request, response: Response):
+    st = get_state(request, response)
+    return an.value_info(st.ds, st.assumptions)
+
+
+@app.post("/api/value")
+def set_value(body: ValueBody, request: Request, response: Response):
+    """Set how this session values AI output. An empty object goes back to hours x hourly rate from the data."""
+    st = get_state(request, response)
+    depts = sorted({r["department"] for r in st.ds.rows})
+    try:
+        clean = an.validate_value_defs(body.defs, depts)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    st.assumptions = replace(st.assumptions, value_json=json.dumps(clean, sort_keys=True) if clean else "")
+    return _report(st)
+
+
 @app.get("/api/explain")
 def explain(request: Request, response: Response, department: str = ""):
     st = get_state(request, response)
@@ -111,8 +142,8 @@ def set_assumptions(p: Params, request: Request, response: Response):
     if not (0.05 <= p.realization <= 1 and 0.1 <= p.elasticity <= 1 and 0.0 <= p.cheap_price_per_m <= 5.0
             and 0.5 <= p.ppu_multiplier <= 6.0):
         raise HTTPException(422, "assumption out of range")
-    st.assumptions = an.Assumptions(realization=p.realization, elasticity=p.elasticity,
-                                    cheap_price_per_m=p.cheap_price_per_m, ppu_multiplier=p.ppu_multiplier)
+    st.assumptions = replace(st.assumptions, realization=p.realization, elasticity=p.elasticity,
+                             cheap_price_per_m=p.cheap_price_per_m, ppu_multiplier=p.ppu_multiplier)  # keeps your value definition
     return _report(st)
 
 
@@ -124,6 +155,7 @@ async def upload(request: Request, response: Response, file: UploadFile = File(.
         raise HTTPException(413, "CSV larger than 5 MB")
     try:
         st.ds = data.load_csv(raw.decode("utf-8-sig"))
+        st.assumptions = replace(st.assumptions, value_json="")  # a definition keyed to the old departments would mislead
     except (ValueError, KeyError, UnicodeDecodeError) as e:
         raise HTTPException(422, str(e))
     return _report(st)

@@ -67,6 +67,9 @@ Rules:
 - The break-even effect is the AI effect on output the spend needs in order to pay for itself at the current realization
   share. Quote it with the measured effect and its range. Scenarios apply a published effect to the people counted as users;
   they are what-ifs, not forecasts.
+- Value is defined by the user per department (dollars per unit of output, or hours x hourly rate, plus an optional
+  benefit per user). When 'custom' is true in get_value_definition, say the dollar figures rest on the user's own
+  definition, and name it when explaining a result that depends on it.
 - Be direct. Lead with the answer, then the two or three numbers that support it. No filler."""
 
 TOOLS = [
@@ -90,6 +93,11 @@ TOOLS = [
         "name": "get_evidence", "description": "Published studies on AI and productivity (with sources, designs, effect sizes, what was verified), how this tool's "
         "company-wide estimate compares with them, the break-even effect this spend needs, what-if scenarios using each published "
         "output effect, and the measured effect by experience level.",
+        "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {
+        "name": "get_value_definition", "description": "How AI value is defined for this analysis: per department, the dollars "
+        "one unit of output is worth (your own figure, or hours x hourly rate from the data), any extra benefit per user, and "
+        "whether the user has customized it.",
         "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {
         "name": "get_actions", "description": "Proposed changes (reclaim seats, cap token spend) per department and level, "
@@ -170,6 +178,8 @@ class Analyst:
             return an.plan_savings(ds, a)
         if name == "get_evidence":
             return bench.bundle(ds, a)
+        if name == "get_value_definition":
+            return an.value_info(ds, a)
         if name == "get_actions":
             return an.actions(ds, a)
         if name == "get_routing":
