@@ -203,7 +203,7 @@ def test_language_never_blames_people():
     import pathlib
     banned = ("lazy", "wasteful", "offender", "abuser", "overspender", "worst performer", "slacker")
     root = pathlib.Path(__file__).resolve().parent.parent
-    for path in [*root.glob("ailedger/*.py"), root / "static/index.html", root / "README.md"]:
+    for path in [*root.glob("ailedger/*.py"), root / "static/index.html", root / "static/charts.js", root / "README.md"]:
         if path.name == "llm.py":
             continue  # holds the ban list and prompt rules by necessity; the detector has its own tests
         text = path.read_text().lower()
@@ -451,3 +451,41 @@ def test_glossary_covers_the_terms_used_on_the_page():
                  "Bill risk", "Variable by role", "Pay per use", "Elasticity", "Realization", "Learning floor",
                  "Shrinkage", "Model routing", "Minimum group size", "Precision and recall"]:
         assert f"'{term}" in html, f"glossary is missing {term}"
+
+
+def test_cost_split_adds_up_to_total_cost():
+    ds, a = data.generate(), an.Assumptions()
+    sp = an.waste(ds, a)["cost_split"]
+    total = an.summary(ds, a)["company"]["monthly_cost"]
+    assert abs(sum(sp.values()) - total) < 1.0
+    assert abs(sp["tokens_above_norm"] - an.waste(ds, a)["over_monthly"]) < 1.0
+    assert abs(sp["seats_unused"] * a.seat_savings_realized - an.waste(ds, a)["idle_monthly"]) < 1.0
+
+
+def test_output_index_shows_users_pulling_ahead_only_after_rollout():
+    ds, a = data.generate(), an.Assumptions()
+    ix = an.output_index(ds, a)
+    assert len(ix["months"]) == 5 and ix["n_users"] > 0 and ix["n_non_users"] > 0
+    pre_gap = abs(ix["users"][0] - ix["non_users"][0])
+    post_gap = ix["users"][-1] - ix["non_users"][-1]
+    assert pre_gap < 1.0 and post_gap > 3.0           # same start, clear gap at the end
+    assert ix["non_users"][-1] > ix["non_users"][0]    # the control group also grew (company trend)
+
+
+def test_charts_are_served_and_wired_to_report_data():
+    c = TestClient(app)
+    js = c.get("/static/charts.js")
+    assert js.status_code == 200 and "renderCharts" in js.text
+    r = c.get("/api/report").json()
+    assert {"cost_split", "by_department"} <= set(r["waste"]) | {"by_department"}
+    assert set(r["waste"]["cost_split"]) == {"seats_in_use", "seats_unused", "tokens_normal", "tokens_above_norm"}
+    assert len(r["output_index"]["users"]) == len(r["output_index"]["months"]) == 5
+    html = c.get("/").text
+    for chart_id in ("c-forest", "c-split", "c-index", "c-trade"):
+        assert f'id="{chart_id}"' in html and chart_id in js.text
+
+
+def test_charts_never_use_untrusted_html_injection():
+    import pathlib
+    js = (pathlib.Path(__file__).resolve().parent.parent / "static/charts.js").read_text()
+    assert "innerHTML" not in js  # department names come from uploaded CSVs: textContent only

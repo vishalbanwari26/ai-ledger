@@ -349,7 +349,13 @@ def waste(ds: Dataset, a: Assumptions) -> dict:
         d["total"] = round(d["idle_cost"] + d["over_cost"], 2)
     idle = round(sum(d["idle_cost"] for d in per.values()), 2)
     over = round(sum(d["over_cost"] for d in per.values()), 2)
-    return dict(idle_seats=sum(d["idle_seats"] for d in per.values()), idle_monthly=idle,
+    seats_used = sum(e.seat_cost for e in es if e.segment != "idle")
+    seats_idle = sum(e.seat_cost for e in es if e.segment == "idle")
+    tokens = sum(e.token_cost for e in es)
+    above = sum(max(0.0, e.token_cost - _cap_for(e, caps)) for e in es if e.segment == "high-spend")
+    split = dict(seats_in_use=round(seats_used, 2), seats_unused=round(seats_idle, 2),
+                 tokens_normal=round(tokens - above, 2), tokens_above_norm=round(above, 2))
+    return dict(cost_split=split, idle_seats=sum(d["idle_seats"] for d in per.values()), idle_monthly=idle,
                 over_people=sum(d["over_people"] for d in per.values()), over_monthly=over,
                 total_monthly=round(idle + over, 2), total_annual=round((idle + over) * 12, 2),
                 seat_savings_realized=a.seat_savings_realized,
@@ -855,3 +861,27 @@ def explain_policies(ds: Dataset, a: Assumptions) -> list[dict]:
              working="; ".join(f"{r['name']} {_m(r['worst_case_cost'])} / {_m(r['monthly_cost'])} - 1 = {_p(r['bill_risk'], 0)}"
                                for r in pols)),
     ]
+
+
+# ---------------------------------------------------------------- output over time, for the control-group chart
+
+def output_index(ds: Dataset, a: Assumptions) -> dict:
+    """Average output by month for people using AI and people not, each person rebased to their own
+    pre-rollout average = 100. Only group averages leave this function."""
+    es, _ = _analyze(ds, a)
+    use = {e.employee_id: e.treated for e in es if e.own_baseline}
+    months = sorted({r["month"] for r in ds.rows})
+    pre_m = set(months[:a.pre_months])
+    pre: dict[str, list[float]] = {}
+    for r in ds.rows:
+        if r["month"] in pre_m and r["employee_id"] in use:
+            pre.setdefault(r["employee_id"], []).append(r["outcome_units"])
+    base = {k: st.mean(v) for k, v in pre.items() if v and st.mean(v) > 0}
+    acc: dict[bool, dict[str, list[float]]] = {True: {m: [] for m in months}, False: {m: [] for m in months}}
+    for r in ds.rows:
+        eid = r["employee_id"]
+        if eid in base:
+            acc[use[eid]][r["month"]].append(r["outcome_units"] / base[eid] * 100)
+    f = lambda grp: [round(st.mean(acc[grp][m]), 2) if acc[grp][m] else None for m in months]  # noqa: E731
+    return dict(months=months, users=f(True), non_users=f(False), pre_months=a.pre_months,
+                n_users=sum(1 for k in base if use[k]), n_non_users=sum(1 for k in base if not use[k]))

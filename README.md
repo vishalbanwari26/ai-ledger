@@ -15,6 +15,9 @@ data, and lets you question the results in plain English. Answers come from NVID
   A department whose range includes zero is labelled uncertain, and gets "review", never "restrict".
 - **Shows its working:** a "Show the math" section walks each department through nine steps with its own numbers
   (cost, growth, control group, range, dollars, ROI, break-even, recoverable spend), plus how each budget policy is computed.
+- **Shows four charts, each answering one question:** which departments clearly pay off (return per $1 with its 95% range),
+  where each AI dollar goes, whether output rose because of AI or for everyone (adopters against a control group over time),
+  and the budget trade-off (net value against bill risk). Each has hover details and a table view.
 - **Explains every term:** a Glossary tab with plain definitions and worked examples that use the live numbers.
 - **Separates fact from opinion:** every number is labelled measured, estimated, assumed or judgement, and each decision is
   re-run in 180 assumption scenarios to show which hold and which depend on assumptions.

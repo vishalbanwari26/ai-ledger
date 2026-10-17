@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import analysis as an
@@ -19,6 +20,7 @@ MAX_SESSIONS = int(os.environ.get("LEDGER_MAX_SESSIONS", "200"))
 LLM_PER_HOUR = int(os.environ.get("LEDGER_LLM_PER_HOUR", "120"))  # global cap: a public demo spends real credits
 MAX_UPLOAD = 5_000_000
 app = FastAPI(title="AI Ledger")
+app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 # Each visitor gets their own dataset and assumptions, keyed by a cookie, so one person's CSV upload
 # or slider change never alters what another visitor sees. Oldest sessions are evicted past the cap.
@@ -53,7 +55,7 @@ class Params(BaseModel):
 def _report(st: Analyst) -> dict:
     a = st.assumptions
     return dict(summary=an.summary(st.ds, a), policies=an.compare_policies(st.ds, a),
-                budgets=an.budget_recommendations(st.ds, a), waste=an.waste(st.ds, a), plan=an.plan_savings(st.ds, a),
+                budgets=an.budget_recommendations(st.ds, a), waste=an.waste(st.ds, a), plan=an.plan_savings(st.ds, a), output_index=an.output_index(st.ds, a),
                 actions=an.actions(st.ds, a), routing=an.routing(st.ds, a), trend=an.trend(st.ds),
                 validation=an.validate(st.ds, a), policy_assumptions=an.POLICY_ASSUMPTIONS, ppu_breakeven=an.pay_per_use_breakeven(st.ds, a),
                 unit_names=data.UNIT_NAMES, rows=len(st.ds.rows))

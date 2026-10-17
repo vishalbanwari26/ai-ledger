@@ -6,7 +6,7 @@ Every number below was taken from the current dashboard. Check each one on scree
 analyst change slightly on every run, so do a dry run.
 
 ## 0:00 to 0:18  The hook
-(Overview tab, the three big tiles. Point at each in turn.)
+(Overview tab, the three big tiles. Point at each in turn. Scroll to the dot-and-line chart: Legal is the only blue one, the rest cross the break-even line.)
 "Companies pay for AI seats and tokens for thousands of people. Almost nobody can say if it pays off.
 This is AI Ledger. For this 1,900 person company it gives three answers.
 One: $16,000 a month is spent on seats nobody uses, and up to $21,000 with high-spend seats. Two: AI returns about $1.17 for every dollar, but that is not proven,
@@ -27,7 +27,7 @@ An unused seat usually means the tool does not fit the work, or nobody explained
 Each row says: ask the team first, try training before any cap. Nobody is named. Groups under ten are hidden."
 
 ## 0:55 to 1:30  Is the return real?
-(Click the tab Is the return real?)
+(Click the tab Is the return real? Start with the line chart: both lines start together and both rise; only the gap is the AI effect.)
 "Output rose 13 percent for people using AI. It also rose almost 6 percent for people who never used it. A busy season.
 We subtract that: the real effect is 7 percent. And we check that adopters were not already pulling ahead. They were not."
 (Scroll to the department table.)
@@ -41,7 +41,7 @@ reassigning unused seats, and a variable budget beating the status quo. Pay per 
 Most department returns depend on the assumptions, and the page says so."
 
 ## 1:58 to 2:18  The budget
-(Click the Budget policy tab.)
+(Click the Budget policy tab. Point at the scatter: pay per use is high but far to the right; variable by role is the recommended trade-off.)
 "Pay per use nets the most, $75,000 a month, but the bill can rise 57 percent in a peak month,
 and it only wins while list price stays under 2.4 times the seat rate. We assumed 1.6. Get a real quote.
 Variable by role nets $39,000 with 17 percent bill risk. It saves about $16,000 a month, almost all from unused seats.

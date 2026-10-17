@@ -50,6 +50,11 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
 .gg{margin:18px 0 8px;font-size:13px;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}
 .gl{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}.gt{margin:0}.gt h3{margin:0 0 4px;font-size:15px}.gt p{margin:0 0 8px;color:var(--text)}
 .ex{background:var(--bg);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;color:var(--mute);font-size:13px}.ex b{color:var(--text)}
+.legend{display:flex;gap:6px 18px;flex-wrap:wrap;margin-top:8px;color:var(--mute);font-size:12px}.legend span{display:inline-flex;align-items:center}
+.lk{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px}
+.tbtn{margin-top:10px;padding:4px 10px;font-size:12px}.chart svg text{font-family:inherit}.chart svg [tabindex]{outline:none}.chart svg [tabindex]:focus-visible{outline:1px solid var(--accent)}
+.ctip{position:fixed;z-index:30;pointer-events:none;background:#0e1116;border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-size:12px;max-width:260px;box-shadow:0 4px 14px rgba(0,0,0,.4)}
+.ctip[hidden]{display:none}.ctip-h{color:var(--mute);margin-bottom:4px}.ctip-r{margin:2px 0}.ctip-r b{color:var(--text);font-size:13px}.ctip-r span:not(.lk){color:var(--mute)}
 .warn{color:var(--warn)}.mute{color:var(--mute)}
 </style>
 </head>
@@ -86,12 +91,12 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
       <div class="card tile"><span class="lab">3 · Best budget model</span><b class="big1" id="o3"></b><p id="o3s"></p></div>
     </div>
     <div class="card"><h2>What to do first</h2><ol id="o4" class="todo"></ol></div>
-    <div class="card"><h2>How sure are we, by department?</h2><div id="o5" class="tiles"></div>
-      <p class="note">Dollars back for every $1 spent on AI. "Clear" means the data supports it; "not proven" means the range includes break-even, so we do not claim more.</p></div>
+    <div class="card chart" id="c-forest"></div>
     <div class="card"><h2>Plain-English summary</h2>
       <button id="bb" onclick="brief()">Write it with Nemotron</button><div id="brief" class="ans"></div></div>
   </div>
   <div class="tab" id="tab-waste" hidden>
+  <div class="card chart" id="c-split"></div>
     <div class="card hero"><span class="lab">Recoverable AI spend: solid plus potential</span>
     <div class="big"><b id="wtot">$0</b><span> / month</span></div>
     <div class="sub" id="wsub" style="margin:4px 0 0"></div></div>
@@ -106,6 +111,7 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
   <div class="card scroll"><h2>Monthly AI spend and drift alerts</h2><div id="alerts"></div><table id="trend"></table></div>
   </div>
   <div class="tab" id="tab-budget" hidden>
+  <div class="card chart" id="c-trade"></div>
     <div class="card scroll"><h2>Policies, simulated on this data</h2><table id="pols"></table>
     <p class="note" id="polnote"></p>
     <details><summary>What each policy assumes</summary><ul id="passm"></ul></details></div>
@@ -115,6 +121,7 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
     <p class="note" id="routenote"></p></div>
   </div>
   <div class="tab" id="tab-real" hidden>
+  <div class="card chart" id="c-index"></div>
     <div class="card"><h2>Why we use a control group</h2>
     <div class="cmp"><span class="mute">Naive before/after:</span><b id="naive"></b>
       <span class="mute">Everyone's output rose anyway:</span><b id="ctrl"></b>
@@ -160,6 +167,7 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
   </div>
   </div>
 </main>
+<script src="/static/charts.js"></script>
 <script>
 const $=id=>document.getElementById(id), usd=n=>(n<0?'-':'')+'$'+Math.abs(Math.round(n)).toLocaleString();
 const pct=n=>Math.round(n*100)+'%', pp=n=>(n*100).toFixed(1)+'%', x=n=>n.toFixed(1)+'x';
@@ -265,17 +273,16 @@ function renderOverview(){if(!R)return;const r=R,c=r.summary.company,w=r.waste,d
    `For the ${w.over_people} high-spend seats, start with training and workflow fit. A team budget is the fallback: up to <b>${usd(w.over_monthly)}</b> a month.`,
    `Get a real pay-per-use quote. We assumed ${be.assumed}x the seat rate.`,
    unc.length?`Measure ${unc.join(', ')} with a cleaner pilot next quarter, because the data cannot yet show whether AI pays off there.`:'Keep measuring each quarter.'
-  ].map(t=>`<li>${t}</li>`).join('');
-  $('o5').innerHTML=Object.entries(d).map(([k,v])=>{const cls=v.confidence==='clear'?(v.roi>0?'c':'n'):'u';
-    return `<div class="dt ${cls}"><span>${k}</span><b>${back(v.roi)} back</b><span class="mute">${cls==='c'?'clear':cls==='n'?'clearly negative':'not proven'} · ${r.budgets[k].verdict} budget</span></div>`}).join('')}
+  ].map(t=>`<li>${t}</li>`).join('');}
 function showTab(t){document.querySelectorAll('.tab').forEach(e=>e.hidden=e.id!=='tab-'+t);
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
-  try{history.replaceState(null,'','#'+t)}catch(e){}}
+  try{history.replaceState(null,'','#'+t)}catch(e){}
+  if(window.renderCharts)window.renderCharts()}
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
 showTab((location.hash||'#overview').slice(1).replace(/[^a-z]/g,'')||'overview');
 async function j(url,opt){const r=await fetch(url,opt);const b=await r.json().catch(()=>({}));
   if(!r.ok)throw new Error(b.detail||r.statusText);return b}
-function render(r){R=r;setTimeout(()=>{renderOverview();renderGlossary()},0);const c=r.summary.company;
+function render(r){R=r;setTimeout(()=>{renderOverview();renderGlossary();window.renderCharts&&window.renderCharts(r)},0);const c=r.summary.company;
   const w=r.waste;$('wtot').textContent=usd(w.total_monthly);
   $('wsub').textContent=`${usd(w.total_annual)} a year in total. Solid: ${w.idle_seats} unused seats, ${usd(w.idle_monthly)}/mo after contract friction. Potential: ${w.over_people} high-spend seats, ${usd(w.over_monthly)}/mo above peer norms, which may cost output if cut, so start with training.`;
   $('waste').innerHTML='<tr><th>Department</th><th class=n>Unused seats</th><th class=n>Unused-seat savings/mo</th><th class=n>High-spend seats</th><th class=n>Above-norm spend/mo</th><th class=n>Recoverable/mo</th></tr>'+
