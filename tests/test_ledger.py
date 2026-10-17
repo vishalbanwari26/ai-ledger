@@ -574,7 +574,7 @@ def test_breakeven_scales_with_realization():
     ds = data.generate()
     half = bench.breakeven(ds, an.Assumptions(realization=0.5))["company"]["breakeven"]
     full = bench.breakeven(ds, an.Assumptions(realization=1.0))["company"]["breakeven"]
-    assert abs(half / full - 2.0) < 1e-3   # counting twice as much of the gain halves the effect you need
+    assert abs(half / full - 2.0) < 0.02   # counting twice as much of the gain halves the effect you need (values are stored to 4 decimals)
 
 
 def test_scenarios_are_ordered_and_use_only_output_studies():
@@ -589,15 +589,15 @@ def test_scenarios_are_ordered_and_use_only_output_studies():
 
 def test_effect_by_level_reports_no_difference_when_none_was_built_in():
     from ailedger import bench
-    L = bench.by_level(data.generate(), an.Assumptions())
+    L = bench.by_level(data.generate(level_lift=False), an.Assumptions())
     assert [x["level"] for x in L["levels"]] == ["intern", "junior", "mid", "senior"]
-    assert L["verdict"].startswith("no clear difference")  # the synthetic data gives every level the same lift
+    assert L["verdict"].startswith("no clear difference")  # the flat case gives every level the same lift
     assert all(x["low"] <= x["effect"] <= x["high"] for x in L["levels"])
 
 
 def test_effect_by_level_detects_a_real_difference():
     from ailedger import bench
-    ds = data.generate(seed=5)
+    ds = data.generate(seed=5, level_lift=False)
     for r in ds.rows:  # make juniors and interns gain an extra 20% after rollout, in a copy of the rows
         if r["level"] in ("intern", "junior") and r["sessions"] >= 3 and r["month"] >= "2026-07":
             r["outcome_units"] *= 1.20
@@ -629,3 +629,30 @@ def test_rounding_matches_the_page():
     from ailedger import bench
     c = an.summary(ds, a)["company"]
     assert f"{ev.p1(c['did_ci_high'] * 100)}%" in bench.perception(ds, a, 7.0)["text"]
+
+
+# ---------------------------------------------------------------- calibration to the published findings
+
+def test_archetype_lifts_sit_inside_the_published_output_range():
+    from ailedger import evidence as ev
+    pr = ev.published_output_range()
+    for name in ("power", "steady"):
+        assert pr["min"] <= data.ARCHETYPES[name]["lift"] * 100 <= pr["max"], name   # adopters who gain, per the studies
+    assert data.ARCHETYPES["unused"]["lift"] == 0 and data.ARCHETYPES["heavy_no_gain"]["lift"] == 0
+    assert 0 < data.ARCHETYPES["light"]["lift"] < pr["min"] / 100
+
+
+def test_levels_gain_more_the_less_experienced_they_are():
+    lifts = [data.LEVELS[k]["lift"] for k in ("intern", "junior", "mid", "senior")]
+    assert lifts == sorted(lifts, reverse=True) and data.LEVELS["mid"]["lift"] == 1.0
+    novice_power = data.ARCHETYPES["power"]["lift"] * data.LEVELS["intern"]["lift"] * 100
+    assert abs(novice_power - 34) < 2        # Brynjolfsson et al.: novices gained 34%
+    assert data.ARCHETYPES["power"]["lift"] * data.LEVELS["senior"]["lift"] > 0.10   # smaller for the experienced, not "minimal" zero
+
+
+def test_measured_effect_is_ordered_by_experience_in_the_calibrated_company():
+    from ailedger import bench
+    L = bench.by_level(data.generate(), an.Assumptions())
+    eff = [x["effect"] for x in L["levels"]]
+    assert eff == sorted(eff, reverse=True)             # intern > junior > mid > senior
+    assert L["verdict"] == "less experienced people gain more" and L["difference"] > 0.02

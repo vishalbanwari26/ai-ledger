@@ -38,18 +38,24 @@ SEAT_COSTS = {"Engineering": 60.0, "Support": 40.0, "Sales": 40.0, "Marketing": 
 TOKEN_MULT = {"Engineering": 8.0, "Support": 2.5, "Sales": 1.0, "Marketing": 1.5, "Finance": 1.0, "Legal": 1.2}
 
 # Interns work on smaller, lower-stakes tasks: less output, lower rate, fewer tokens.
-LEVELS = {  # share of headcount, token mult, output mult, hourly-rate mult
-    "intern": dict(share=0.08, tok=0.45, units=0.55, rate=0.45),
-    "junior": dict(share=0.25, tok=0.8, units=0.8, rate=0.7),
-    "mid": dict(share=0.40, tok=1.0, units=1.0, rate=1.0),
-    "senior": dict(share=0.27, tok=1.15, units=1.1, rate=1.4),
+# lift: how much of the archetype's gain this level realizes. Calibrated to the published findings (docs/evidence.md):
+# Brynjolfsson et al. found novices gained 34% while experienced workers saw minimal impact, and Cui et al. found less
+# experienced developers gained more. With a 24% power-user lift at mid level, an intern's 1.45x gives about 35%
+# (the novice figure) and a senior's 0.70x gives about 17% (smaller, not minimal).
+LEVELS = {  # share of headcount, token mult, output mult, hourly-rate mult, lift mult
+    "intern": dict(share=0.08, tok=0.45, units=0.55, rate=0.45, lift=1.45),
+    "junior": dict(share=0.25, tok=0.8, units=0.8, rate=0.7, lift=1.30),
+    "mid": dict(share=0.40, tok=1.0, units=1.0, rate=1.0, lift=1.00),
+    "senior": dict(share=0.27, tok=1.15, units=1.1, rate=1.4, lift=0.70),
 }
 
-# lift = real productivity gain on outcomes; usage = relative token use.
+# lift = real productivity gain on outcomes for a mid-level person; usage = relative token use.
+# Calibrated to published adopter effects on output of 12% to 26% (Dell'Acqua 12.2, Brynjolfsson 14, Microsoft rollout 24,
+# Cui 26.1): power users sit at the top of that range, steady users near its lower end, light users well below.
 ARCHETYPES = {
-    "power": dict(lift=0.22, usage=1.0, sessions=(60, 120)),
-    "steady": dict(lift=0.10, usage=0.35, sessions=(20, 50)),
-    "light": dict(lift=0.02, usage=0.08, sessions=(2, 10)),
+    "power": dict(lift=0.24, usage=1.0, sessions=(60, 120)),
+    "steady": dict(lift=0.14, usage=0.35, sessions=(20, 50)),
+    "light": dict(lift=0.03, usage=0.08, sessions=(2, 10)),
     "unused": dict(lift=0.0, usage=0.0, sessions=(0, 1)),
     "heavy_no_gain": dict(lift=0.0, usage=1.6, sessions=(80, 200)),
 }
@@ -90,12 +96,12 @@ def _pick(rng: random.Random, mix: dict[str, float]) -> str:
 
 
 def generate(seed: int = 7, messy: bool = True, noise: float = 0.07, trend: float = COMPANY_TREND,
-             adopter_drift: float = 0.0, scale: float = 1.0) -> Dataset:
+             adopter_drift: float = 0.0, scale: float = 1.0, level_lift: bool = True) -> Dataset:
     """messy=True adds the cases that break naive analysis: part-timers, people on leave, new hires.
 
     Knobs for stress tests: noise (monthly output noise, +/- fraction), trend (company-wide monthly growth),
     adopter_drift (extra monthly growth that people who use AI would have had anyway: self-selection),
-    scale (headcount multiplier).
+    scale (headcount multiplier), level_lift (False gives every level the same lift, a flat case for tests).
     """
     rng = random.Random(seed)
     rows: list[dict] = []
@@ -129,7 +135,7 @@ def generate(seed: int = 7, messy: bool = True, noise: float = 0.07, trend: floa
                 lo, hi = arch["sessions"]
                 sessions = int(rng.uniform(lo, hi) * ramp) if active and hi > 1 else 0
                 tokens = int(arch["usage"] * TOKEN_MULT[dept] * lv["tok"] * ramp * rng.uniform(2.0e6, 6.0e6)) if sessions else 0
-                lift = arch["lift"] * ramp
+                lift = arch["lift"] * (lv["lift"] if level_lift else 1.0) * ramp
                 growth = (1 + trend) ** i * ((1 + adopter_drift) ** i if arch_name != "unused" else 1.0)
                 units = personal_base * growth * (1 + lift) * rng.uniform(1 - noise, 1 + noise)
                 if i >= 2:

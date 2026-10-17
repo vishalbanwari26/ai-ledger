@@ -53,10 +53,26 @@ Evidence tab; code in `ailedger/bench.py`, each with tests):
   as users. They are what-ifs, not forecasts.
 - **Do less experienced people gain more?** Brynjolfsson et al. (novices +34%, experienced minimal) and Cui et al. (less
   experienced gained more) both say yes. The tool measures the effect by level with the same control-group method. The
-  demo company was built with the same lift at every level, so it correctly reports no clear difference; it does not
-  confirm the studies. On real data this is a test, and it bears on the junior cap: if juniors gain more, capping them
-  below the department would be counterproductive, which is why their caps are floored at the department cap.
+  demo company is calibrated to that pattern (below), so the tool finds it: interns 13.7%, juniors 10.3%, mid-level 8.1%,
+  seniors 6.1%. That shows the detector works. It is not independent confirmation of the studies, and a flat company
+  (`generate(level_lift=False)`) correctly shows no difference. On real data this is a test, and it bears on the junior
+  cap: if juniors gain more, capping them below the department would be counterproductive, which is why their caps are
+  floored at the department cap.
 - **Perception gap.** METR's trial found developers expected a 24% speedup and afterwards believed they had been 20% faster,
   while the measured result was 19% slower. Enter what employees say AI adds to their output and the tool shows the gap
   against its measured effect and range. One study with early-2025 tools, but it is why this tool measures output
   instead of asking.
+
+## How the demo company is calibrated to these studies
+
+The synthetic company (`ailedger/data.py`) uses the published findings as building blocks. The headline is not tuned.
+
+- **Archetype lifts, for a mid-level person.** Power users 24%, steady users 14%, light users 3%, heavy users and unused
+  seats 0%. The first two sit inside the 12.2% to 26.1% found for adopters by Dell'Acqua et al. (12.2%), Brynjolfsson
+  et al. (14%), the Microsoft rollout (24%) and Cui et al. (26.1%).
+- **Level multipliers.** Interns 1.45x, juniors 1.30x, mid-level 1.00x, seniors 0.70x. A power-user intern gets about 35%,
+  matching the 34% found for novices; a power-user senior gets about 17%: smaller, not zero. Brynjolfsson et al. found
+  minimal impact for experienced agents, and the multiplier is a modest reading of that for software engineers.
+- **What is not calibrated.** The company-wide effect is an outcome: it lands at 8.6% (range 6.4% to 10.9%), below the
+  published range, because light users and heavy users with no gain dilute it and the window includes the adoption ramp.
+  The Evidence tab says so. The mix of archetypes, prices and spend patterns are our own assumptions.

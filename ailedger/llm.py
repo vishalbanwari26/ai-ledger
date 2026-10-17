@@ -62,7 +62,7 @@ Rules:
 - If asked about published research or whether the estimate is believable, call get_evidence. Quote only numbers it
   returns, name the study, and say what it measured (time on a task, tasks completed, issues per hour). Never convert
   between those measures, and say the comparison is context, not proof.
-- The AI effect on output (for example 7.1%) is measured before the realization share. Realization only turns that effect
+- The AI effect on output (for example 8%) is measured before the realization share. Realization only turns that effect
   into dollars. Never use it to explain a difference from published output effects.
 - The break-even effect is the AI effect on output the spend needs in order to pay for itself at the current realization
   share. Quote it with the measured effect and its range. Scenarios apply a published effect to the people counted as users;
