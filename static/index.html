@@ -38,6 +38,15 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
 .cmp{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}.cmp b{font-size:26px;font-variant-numeric:tabular-nums}
 .step{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px}.step b{display:block;margin-bottom:2px}
 .fm{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--accent);margin:2px 0}.res{margin-top:4px;font-variant-numeric:tabular-nums}
+.tabs{display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid var(--line);margin:0 0 14px;padding-bottom:0}
+.tabs button{background:transparent;color:var(--mute);border:0;border-bottom:2px solid transparent;border-radius:0;padding:10px 12px;white-space:nowrap}
+.tabs button.on{color:var(--text);border-bottom-color:var(--accent)}.tab[hidden]{display:none}
+.three{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}.tile{margin:0}.tile .lab{color:var(--mute);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+.big1{display:block;font-size:30px;line-height:1.15;margin:8px 0 6px;font-variant-numeric:tabular-nums}.red{color:var(--bad)}.tile p{margin:0;color:var(--mute)}
+.todo{margin:0;padding-left:20px}.todo li{margin:6px 0}
+.tiles{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.dt{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px}.dt b{display:block;font-size:20px;font-variant-numeric:tabular-nums}
+.dt.c{border-left:3px solid var(--good)}.dt.u{border-left:3px solid var(--warn)}.dt.n{border-left:3px solid var(--bad)}
 .warn{color:var(--warn)}.mute{color:var(--mute)}
 </style>
 </head>
@@ -46,7 +55,7 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
   <h1>AI Ledger</h1>
   <p class="sub">Is your AI spend paying off, and how should each team's budget work? Powered by NVIDIA Nemotron on Nebius Token Factory.</p>
 
-  <div class="card">
+    <details class="card" id="settings"><summary style="cursor:pointer;color:var(--text)"><b>Data and assumptions</b> <span class="mute">(sliders change every number)</span></summary><div style="margin-top:12px">
     <div class="row">
       <div><label>Data</label><span id="src" class="pill">synthetic company</span></div>
       <input id="file" type="file" accept=".csv" hidden>
@@ -60,37 +69,50 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
       <div><label>Pay-per-use list price: <b id="pv">1.6x</b></label><input id="ppu" type="range" min="50" max="600" value="160"></div>
     </div>
     <div id="uerr" class="err"></div>
-  </div>
+  </div></details>
 
-  <div class="card hero"><span class="lab">Recoverable AI spend found</span>
+  <nav class="tabs" id="tabs">
+    <button data-tab="overview" class="on">Overview</button><button data-tab="waste">Waste and actions</button>
+    <button data-tab="budget">Budget policy</button><button data-tab="real">Is the return real?</button>
+    <button data-tab="math">Show the math</button><button data-tab="ask">Ask</button></nav>
+
+  <div class="tab" id="tab-overview">
+    <div class="grid three">
+      <div class="card tile"><span class="lab">1 · Money you can recover</span><b class="big1 red" id="o1"></b><p id="o1s"></p></div>
+      <div class="card tile"><span class="lab">2 · Is AI paying off?</span><b class="big1" id="o2"></b><p id="o2s"></p></div>
+      <div class="card tile"><span class="lab">3 · Best budget model</span><b class="big1" id="o3"></b><p id="o3s"></p></div>
+    </div>
+    <div class="card"><h2>What to do first</h2><ol id="o4" class="todo"></ol></div>
+    <div class="card"><h2>How sure are we, by department?</h2><div id="o5" class="tiles"></div>
+      <p class="note">Dollars back for every $1 spent on AI. "Clear" means the data supports it; "not proven" means the range includes break-even, so we do not claim more.</p></div>
+    <div class="card"><h2>Plain-English summary</h2>
+      <button id="bb" onclick="brief()">Write it with Nemotron</button><div id="brief" class="ans"></div></div>
+  </div>
+  <div class="tab" id="tab-waste" hidden>
+    <div class="card hero"><span class="lab">Recoverable AI spend found</span>
     <div class="big"><b id="wtot">$0</b><span> / month</span></div>
     <div class="sub" id="wsub" style="margin:4px 0 0"></div></div>
-
-  <div class="card scroll"><h2>Where the waste is</h2><table id="waste"></table>
+    <div class="card scroll"><h2>Where the waste is</h2><table id="waste"></table>
     <p class="note">Unused = a seat with under 3 sessions a month. An unused seat is usually a fit or awareness problem, not a people problem: ask the team before reassigning. Savings count only the share of a seat you can actually cancel (contract minimums and notice periods).
     High-spend = token spend above the 75th percentile of ROI-positive peers in the same department and level, on seats whose ROI is negative. Start with training and workflow fit; this is about how tools are set up, not about anyone's effort.</p></div>
-
-  <div class="card"><h2>Executive brief</h2>
-    <button id="bb" onclick="brief()">Generate with Nemotron</button>
-    <div id="brief" class="ans"></div></div>
-
-  <h2 class="sec">Act on it</h2>
-  <div class="card scroll"><h2>Proposed actions: approve what you want</h2><table id="acts"></table>
+    <div class="card scroll"><h2>Proposed actions: approve what you want</h2><table id="acts"></table>
     <div class="row" style="margin-top:12px"><div id="actsum" class="mute"></div><div style="flex:1"></div>
       <button class="ghost" onclick="dl()">Download approved as CSV</button></div>
     <p class="note" id="privnote"></p></div>
-
-  <h2 class="sec">The fix: budget policy</h2>
-  <div class="card scroll"><h2>Policies, simulated on this data</h2><table id="pols"></table>
+    <h2 class="sec">Watch it over time</h2>
+  <div class="card scroll"><h2>Monthly AI spend and drift alerts</h2><div id="alerts"></div><table id="trend"></table></div>
+  </div>
+  <div class="tab" id="tab-budget" hidden>
+    <div class="card scroll"><h2>Policies, simulated on this data</h2><table id="pols"></table>
     <p class="note" id="polnote"></p>
     <details><summary>What each policy assumes</summary><ul id="passm"></ul></details></div>
-  <div class="card scroll"><h2>Recommended budget per department</h2><table id="buds"></table>
+    <div class="card scroll"><h2>Recommended budget per department</h2><table id="buds"></table>
     <p class="note">Caps are peer norms: what colleagues of the same role and level who get a positive return spend today. They describe use, not need. Interns and juniors are never set below the department cap, because they iterate more while learning. Treat every cap as a starting point to adjust with the team.</p></div>
-  <div class="card scroll"><h2>Cost by model: route routine work to a cheaper one</h2><table id="route"></table>
+    <div class="card scroll"><h2>Cost by model: route routine work to a cheaper one</h2><table id="route"></table>
     <p class="note" id="routenote"></p></div>
-
-  <h2 class="sec">Is the return real?</h2>
-  <div class="card"><h2>Why we use a control group</h2>
+  </div>
+  <div class="tab" id="tab-real" hidden>
+    <div class="card"><h2>Why we use a control group</h2>
     <div class="cmp"><span class="mute">Naive before/after:</span><b id="naive"></b>
       <span class="mute">Everyone's output rose anyway:</span><b id="ctrl"></b>
       <span class="mute">AI effect (adopters minus non-adopters):</span><b id="did" style="color:var(--good)"></b></div>
@@ -98,36 +120,35 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
     <p class="note">Output rose for people who never used AI too (busy season, new product). A plain before/after would credit all of it to AI.
     Each person is compared with their own first two months, as a ratio, so an intern and a senior are comparable.
     Limit: people choose whether to adopt. We test whether adopters were already pulling ahead before rollout and remove that gap, but differences that only start at rollout cannot be seen.</p></div>
-  <div id="kpis" class="grid kpis"></div>
-  <div class="card scroll"><h2>ROI by department, with 95% range</h2><table id="depts"></table>
+    <div id="kpis" class="grid kpis"></div>
+    <div class="card scroll"><h2>ROI by department, with 95% range</h2><table id="depts"></table>
     <p class="note">"Uncertain" means the range includes zero: the data cannot tell this department from break-even. "Break-even credit" is the share of the estimated gain that must be real for the department to pay for itself.</p></div>
-  <div class="card scroll"><h2>ROI by level</h2><table id="levels"></table>
+    <div class="card scroll"><h2>ROI by level</h2><table id="levels"></table>
     <p class="note">Value is time saved times hourly rate, so lower-paid levels show lower dollar ROI on the same seat. This is not a verdict on their work, and it ignores learning and ramp-up. Peer comparisons for high spend are made within level, never across.</p></div>
-
-  <div class="card" id="robcard"><h2>How much of this is opinion?</h2>
+    <div class="card" id="robcard"><h2>How much of this is opinion?</h2>
     <div id="kinds" class="grid two"></div>
     <p class="note" id="robnote">Computing 180 assumption scenarios…</p>
     <table id="robdec"></table><table id="robdep" style="margin-top:12px"></table></div>
-
-  <div class="card" id="mathcard"><h2>Show the math</h2>
+  <details class="card" id="valcard" hidden><summary style="cursor:pointer"><b>Does the analysis find what is really there?</b> <span class="mute">(synthetic data only)</span></summary>
+    
+    <p class="note" style="margin:0 0 10px">This company is synthetic, so we know the truth. Hidden labels (usage patterns built into the generator) are compared with what the analysis flagged. Messy cases are included: part-timers, people on leave, new hires with no baseline.</p>
+    <table id="val"></table><p class="note" id="valnote"></p></details>
+  </div>
+  <div class="tab" id="tab-math" hidden>
+    <div class="card" id="mathcard"><h2>Show the math</h2>
     <div class="row" style="margin-bottom:10px"><div><label>Department</label><select id="mdept" onchange="loadMath(this.value)" style="background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font:inherit"></select></div>
       <div class="mute" style="max-width:640px">Every figure above is built from these steps, with this department's own numbers and your current sliders. Only averages and totals appear. No individual is shown.</div></div>
     <div id="msteps" class="grid"></div>
     <h2 style="margin-top:16px">Budget policies</h2><div id="mpols" class="grid"></div></div>
-
-  <h2 class="sec">Watch it over time</h2>
-  <div class="card scroll"><h2>Monthly AI spend and drift alerts</h2><div id="alerts"></div><table id="trend"></table></div>
-
-  <div class="card" id="valcard" hidden><h2>Does the analysis find what is really there?</h2>
-    <p class="note" style="margin:0 0 10px">This company is synthetic, so we know the truth. Hidden labels (usage patterns built into the generator) are compared with what the analysis flagged. Messy cases are included: part-timers, people on leave, new hires with no baseline.</p>
-    <table id="val"></table><p class="note" id="valnote"></p></div>
-
-  <div class="card"><h2>Ask the analyst</h2>
+  </div>
+  <div class="tab" id="tab-ask" hidden>
+    <div class="card"><h2>Ask the analyst</h2>
     <div class="chips" id="chips"></div>
     <textarea id="q" rows="2" placeholder="e.g. Which department should lose seats, and what would we save?"></textarea>
     <div style="margin-top:8px"><button id="ab" onclick="ask()">Ask</button></div>
     <div id="ans" class="ans"></div><div id="aerr" class="err"></div>
     <details id="evd"><summary>Evidence: tool calls behind the answer</summary><pre id="evpre"></pre></details>
+  </div>
   </div>
 </main>
 <script>
@@ -135,9 +156,38 @@ const $=id=>document.getElementById(id), usd=n=>(n<0?'-':'')+'$'+Math.abs(Math.r
 const pct=n=>Math.round(n*100)+'%', pp=n=>(n*100).toFixed(1)+'%', x=n=>n.toFixed(1)+'x';
 const roiRange=v=>`${x(v.roi)} <span class="mute">(${x(v.roi_low)} to ${x(v.roi_high)})</span>`;
 let R;
+
+let ROB=null;
+const back=v=>'$'+(1+v).toFixed(2);
+function renderOverview(){if(!R)return;const r=R,c=r.summary.company,w=r.waste,d=r.summary.departments,be=r.ppu_breakeven;
+  $('o1').textContent=usd(w.total_monthly)+' a month';
+  $('o1s').textContent=`About ${usd(w.total_annual)} a year: ${w.idle_seats} seats nobody uses and ${w.over_people} seats with high spend and no matching gain. Reassign only after asking the teams.`;
+  const names=f=>Object.entries(d).filter(([k,v])=>f(v)).map(([k])=>k);
+  const pos=names(v=>v.confidence==='clear'&&v.roi>0), neg=names(v=>v.confidence==='clear'&&v.roi<0), unc=names(v=>v.confidence!=='clear');
+  $('o2').textContent=back(c.roi)+' back per $1';
+  $('o2s').textContent=(c.confidence==='clear'?'Supported by the data. ':`Not proven: it could be as low as ${back(c.roi_low)} or as high as ${back(c.roi_high)}. `)+
+    (pos.length?`Clearly positive in ${pos.join(', ')}. `:'')+(neg.length?`Clearly negative in ${neg.join(', ')}. `:'')+(unc.length?`Not enough evidence in ${unc.join(', ')}.`:'');
+  const vbr=r.policies.find(p=>p.name==='Variable by role'), ppu=r.policies.find(p=>p.name==='Pay per use');
+  const robust=ROB&&ROB.decisions.find(x=>x.id==='vbr_beats_status_quo').holds>=.95;
+  $('o3').textContent='Variable by role';
+  $('o3s').textContent=`Seats only for people who use them, team budgets set from similar teams. ${robust?'Beats today\'s setup in every scenario we tested. ':ROB?'Check the assumptions tab: it does not win everywhere. ':''}`+
+    (ppu.net>vbr.net?`Pay per use nets more (${usd(ppu.net)} vs ${usd(vbr.net)} a month) but only while list price stays under ${be.multiplier?be.multiplier+'x':'a limit'} the seat rate, and its bill swings more. Get a quote first.`:'');
+  $('o4').innerHTML=[
+   `Ask the teams with unused seats whether the tool fits their work, then reassign what is not needed: up to <b>${usd(w.idle_monthly)}</b> a month.`,
+   `For the ${w.over_people} high-spend seats, start with training and workflow fit. A team budget is the fallback: up to <b>${usd(w.over_monthly)}</b> a month.`,
+   `Get a real pay-per-use quote. We assumed ${be.assumed}x the seat rate.`,
+   unc.length?`Measure ${unc.join(', ')} with a cleaner pilot next quarter, because the data cannot yet show whether AI pays off there.`:'Keep measuring each quarter.'
+  ].map(t=>`<li>${t}</li>`).join('');
+  $('o5').innerHTML=Object.entries(d).map(([k,v])=>{const cls=v.confidence==='clear'?(v.roi>0?'c':'n'):'u';
+    return `<div class="dt ${cls}"><span>${k}</span><b>${back(v.roi)} back</b><span class="mute">${cls==='c'?'clear':cls==='n'?'clearly negative':'not proven'} · ${r.budgets[k].verdict} budget</span></div>`}).join('')}
+function showTab(t){document.querySelectorAll('.tab').forEach(e=>e.hidden=e.id!=='tab-'+t);
+  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
+  try{history.replaceState(null,'','#'+t)}catch(e){}}
+document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+showTab((location.hash||'#overview').slice(1).replace(/[^a-z]/g,'')||'overview');
 async function j(url,opt){const r=await fetch(url,opt);const b=await r.json().catch(()=>({}));
   if(!r.ok)throw new Error(b.detail||r.statusText);return b}
-function render(r){R=r;const c=r.summary.company;
+function render(r){R=r;setTimeout(renderOverview,0);const c=r.summary.company;
   const w=r.waste;$('wtot').textContent=usd(w.total_monthly);
   $('wsub').textContent=`${usd(w.total_annual)} a year: ${w.idle_seats} unused seats (${usd(w.idle_monthly)}/mo after contract friction) and ${w.over_people} high-spend seats without matching gain (${usd(w.over_monthly)}/mo above peer norms).`;
   $('waste').innerHTML='<tr><th>Department</th><th class=n>Unused seats</th><th class=n>Unused-seat savings/mo</th><th class=n>High-spend seats</th><th class=n>Above-norm spend/mo</th><th class=n>Recoverable/mo</th></tr>'+
@@ -195,7 +245,7 @@ async function loadMath(d){try{const g=await j('/api/explain'+(d?('?department='
   catch(err){$('msteps').textContent='Could not load: '+err.message}}
 
 async function loadRob(){$('robnote').textContent='Computing 180 assumption scenarios…';
-  try{const g=await j('/api/robustness');const k=g.kinds;
+  try{const g=await j('/api/robustness');ROB=g;renderOverview();const k=g.kinds;
    $('kinds').innerHTML=[['Measured','measured','var(--good)','Counted from your data.'],['Estimated','estimated','var(--accent)','Computed with a range.'],['Assumed','assumed','var(--warn)','Sliders. Opinion.'],['Judgement','judgement','var(--bad)','A choice we made, shown so you can disagree.']]
     .map(([t,key,col,sub])=>`<div class="card" style="margin:0"><b style="color:${col}">${t}</b> <span class=mute>${sub}</span><ul style="margin:6px 0 0;padding-left:18px">${k[key].map(i=>`<li>${i}</li>`).join('')}</ul></div>`).join('');
    const lab=h=>h>=.95?'<span class=clear>holds</span>':h<=.05?'<span class=restrict>fails</span>':'<span class=uncertain>depends</span>';
