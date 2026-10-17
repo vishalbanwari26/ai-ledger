@@ -53,6 +53,10 @@ Rules:
   more certainty than a 'depends on assumptions' verdict allows.
 - Token caps are peer norms, not a statement of need. Interns and juniors are floored at the department cap because
   they iterate more while learning. Say this if asked about caps by level.
+- Per-head numbers: current_per_head is the average over everyone; expected_per_head is what the plan costs per head;
+  ceiling_per_head is the most one active person may use (seat plus cap). Never compare the ceiling with the average.
+- Separate solid savings (unused seats) from potential savings (high spend). The plan saves almost only through
+  seats; above-norm spend is recovered only through training or hard caps, and hard caps cost output (get_plan_savings).
 - Be direct. Lead with the answer, then the two or three numbers that support it. No filler."""
 
 TOOLS = [
@@ -67,6 +71,10 @@ TOOLS = [
         "name": "get_robustness", "description": "How subjective the conclusions are: which decisions hold in what share "
         "of 180 assumption scenarios, which departments are positive or depend on assumptions, and which numbers are "
         "measured, estimated, assumed or judgement.",
+        "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {
+        "name": "get_plan_savings", "description": "What the 'Variable by role' plan actually saves, split into reassigned "
+        "unused seats and caps, per department, plus what hard per-person caps would save and cost in output.",
         "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {
         "name": "get_actions", "description": "Proposed changes (reclaim seats, cap token spend) per department and level, "
@@ -143,6 +151,8 @@ class Analyst:
             return an.waste(ds, a)
         if name == "get_robustness":
             return an.robustness(ds, a)
+        if name == "get_plan_savings":
+            return an.plan_savings(ds, a)
         if name == "get_actions":
             return an.actions(ds, a)
         if name == "get_routing":

@@ -53,7 +53,7 @@ class Params(BaseModel):
 def _report(st: Analyst) -> dict:
     a = st.assumptions
     return dict(summary=an.summary(st.ds, a), policies=an.compare_policies(st.ds, a),
-                budgets=an.budget_recommendations(st.ds, a), waste=an.waste(st.ds, a),
+                budgets=an.budget_recommendations(st.ds, a), waste=an.waste(st.ds, a), plan=an.plan_savings(st.ds, a),
                 actions=an.actions(st.ds, a), routing=an.routing(st.ds, a), trend=an.trend(st.ds),
                 validation=an.validate(st.ds, a), policy_assumptions=an.POLICY_ASSUMPTIONS, ppu_breakeven=an.pay_per_use_breakeven(st.ds, a),
                 unit_names=data.UNIT_NAMES, rows=len(st.ds.rows))

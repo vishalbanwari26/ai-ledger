@@ -78,7 +78,7 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
 
   <div class="tab" id="tab-overview">
     <div class="grid three">
-      <div class="card tile"><span class="lab">1 · Money you can recover</span><b class="big1 red" id="o1"></b><p id="o1s"></p></div>
+      <div class="card tile"><span class="lab">1 · Money you can recover now</span><b class="big1 red" id="o1"></b><p id="o1s"></p></div>
       <div class="card tile"><span class="lab">2 · Is AI paying off?</span><b class="big1" id="o2"></b><p id="o2s"></p></div>
       <div class="card tile"><span class="lab">3 · Best budget model</span><b class="big1" id="o3"></b><p id="o3s"></p></div>
     </div>
@@ -89,7 +89,7 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
       <button id="bb" onclick="brief()">Write it with Nemotron</button><div id="brief" class="ans"></div></div>
   </div>
   <div class="tab" id="tab-waste" hidden>
-    <div class="card hero"><span class="lab">Recoverable AI spend found</span>
+    <div class="card hero"><span class="lab">Recoverable AI spend: solid plus potential</span>
     <div class="big"><b id="wtot">$0</b><span> / month</span></div>
     <div class="sub" id="wsub" style="margin:4px 0 0"></div></div>
     <div class="card scroll"><h2>Where the waste is</h2><table id="waste"></table>
@@ -106,8 +106,8 @@ details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;
     <div class="card scroll"><h2>Policies, simulated on this data</h2><table id="pols"></table>
     <p class="note" id="polnote"></p>
     <details><summary>What each policy assumes</summary><ul id="passm"></ul></details></div>
-    <div class="card scroll"><h2>Recommended budget per department</h2><table id="buds"></table>
-    <p class="note">Caps are peer norms: what colleagues of the same role and level who get a positive return spend today. They describe use, not need. Interns and juniors are never set below the department cap, because they iterate more while learning. Treat every cap as a starting point to adjust with the team.</p></div>
+    <div class="card scroll"><h2>Recommended budget per department</h2><p id="planrec" class="mute" style="margin:0 0 12px"></p><table id="buds"></table>
+    <p class="note">"Expected under plan" is the average cost per head after reassigning unused seats. "Ceiling" is the most one active person may use, so it is higher than an average on purpose. Caps are peer norms: what colleagues of the same role and level who get a positive return spend today. They describe use, not need. Interns and juniors are never set below the department cap, because they iterate more while learning. Treat every cap as a starting point to adjust with the team.</p></div>
     <div class="card scroll"><h2>Cost by model: route routine work to a cheaper one</h2><table id="route"></table>
     <p class="note" id="routenote"></p></div>
   </div>
@@ -160,8 +160,8 @@ let R;
 let ROB=null;
 const back=v=>'$'+(1+v).toFixed(2);
 function renderOverview(){if(!R)return;const r=R,c=r.summary.company,w=r.waste,d=r.summary.departments,be=r.ppu_breakeven;
-  $('o1').textContent=usd(w.total_monthly)+' a month';
-  $('o1s').textContent=`About ${usd(w.total_annual)} a year: ${w.idle_seats} seats nobody uses and ${w.over_people} seats with high spend and no matching gain. Reassign only after asking the teams.`;
+  $('o1').textContent=usd(w.idle_monthly)+' a month';
+  $('o1s').textContent=`${w.idle_seats} seats nobody uses, about ${usd(w.idle_monthly*12)} a year. Reassign only after asking the teams. Up to ${usd(w.over_monthly)} more if ${w.over_people} high-spend seats move to peer norms, but that can cost output, so start with training.`;
   const names=f=>Object.entries(d).filter(([k,v])=>f(v)).map(([k])=>k);
   const pos=names(v=>v.confidence==='clear'&&v.roi>0), neg=names(v=>v.confidence==='clear'&&v.roi<0), unc=names(v=>v.confidence!=='clear');
   $('o2').textContent=back(c.roi)+' back per $1';
@@ -170,7 +170,7 @@ function renderOverview(){if(!R)return;const r=R,c=r.summary.company,w=r.waste,d
   const vbr=r.policies.find(p=>p.name==='Variable by role'), ppu=r.policies.find(p=>p.name==='Pay per use');
   const robust=ROB&&ROB.decisions.find(x=>x.id==='vbr_beats_status_quo').holds>=.95;
   $('o3').textContent='Variable by role';
-  $('o3s').textContent=`Seats only for people who use them, team budgets set from similar teams. ${robust?'Beats today\'s setup in every scenario we tested. ':ROB?'Check the assumptions tab: it does not win everywhere. ':''}`+
+  $('o3s').textContent=`Seats only for people who use them, team budgets set from similar teams. It saves about ${usd(r.plan.company.saving)} a month, almost all from unused seats. ${robust?'Beats today\'s setup in every scenario we tested. ':ROB?'Check the assumptions tab: it does not win everywhere. ':''}`+
     (ppu.net>vbr.net?`Pay per use nets more (${usd(ppu.net)} vs ${usd(vbr.net)} a month) but only while list price stays under ${be.multiplier?be.multiplier+'x':'a limit'} the seat rate, and its bill swings more. Get a quote first.`:'');
   $('o4').innerHTML=[
    `Ask the teams with unused seats whether the tool fits their work, then reassign what is not needed: up to <b>${usd(w.idle_monthly)}</b> a month.`,
@@ -189,7 +189,7 @@ async function j(url,opt){const r=await fetch(url,opt);const b=await r.json().ca
   if(!r.ok)throw new Error(b.detail||r.statusText);return b}
 function render(r){R=r;setTimeout(renderOverview,0);const c=r.summary.company;
   const w=r.waste;$('wtot').textContent=usd(w.total_monthly);
-  $('wsub').textContent=`${usd(w.total_annual)} a year: ${w.idle_seats} unused seats (${usd(w.idle_monthly)}/mo after contract friction) and ${w.over_people} high-spend seats without matching gain (${usd(w.over_monthly)}/mo above peer norms).`;
+  $('wsub').textContent=`${usd(w.total_annual)} a year in total. Solid: ${w.idle_seats} unused seats, ${usd(w.idle_monthly)}/mo after contract friction. Potential: ${w.over_people} high-spend seats, ${usd(w.over_monthly)}/mo above peer norms, which may cost output if cut, so start with training.`;
   $('waste').innerHTML='<tr><th>Department</th><th class=n>Unused seats</th><th class=n>Unused-seat savings/mo</th><th class=n>High-spend seats</th><th class=n>Above-norm spend/mo</th><th class=n>Recoverable/mo</th></tr>'+
    Object.entries(w.by_department).map(([k,v])=>`<tr><td>${k}</td><td class=n>${v.idle_seats}</td><td class=n>${usd(v.idle_cost)}</td><td class=n>${v.over_people}</td><td class=n>${usd(v.over_cost)}</td><td class=n><b>${usd(v.total)}</b></td></tr>`).join('');
   $('acts').innerHTML='<tr><th></th><th>Action</th><th>Department</th><th>Level</th><th class=n>People</th><th class=n>Saves/mo</th><th>Why</th></tr>'+
@@ -202,8 +202,9 @@ function render(r){R=r;setTimeout(renderOverview,0);const c=r.summary.company;
   const top=r.policies.reduce((a,b)=>b.net>a.net?b:a);
   const be=r.ppu_breakeven;$('polnote').textContent=`Highlighted row: highest net value (${top.name}). ROI is a ratio and rises whenever spend falls, so rank on net dollars and check bill risk, the extra cost if everyone spends at their own peak month. ${be.note} You assumed ${be.assumed}x: get a real vendor quote, because this one number can change the winner.`;
   $('passm').innerHTML=r.policy_assumptions.map(t=>`<li>${t}</li>`).join('');
-  $('buds').innerHTML='<tr><th>Department</th><th>Model</th><th>Confidence</th><th class=n>Per head now</th><th class=n>Recommended</th><th class=n>Token cap by level</th><th>Why</th></tr>'+
-   Object.entries(r.budgets).map(([k,v])=>`<tr><td>${k}</td><td><span class="pill ${v.verdict}">${v.verdict}</span></td><td class="${v.confidence}">${v.confidence}</td><td class=n>${usd(v.current_per_head)}</td><td class=n>${usd(v.recommended_per_head)}</td><td class=n>${Object.entries(v.token_cap_by_level).map(([l,c])=>l[0].toUpperCase()+l.slice(1)+' '+usd(c)).join('<br>')||usd(v.recommended_token_cap)}</td><td class=mute>${v.reason}</td></tr>`).join('');
+  $('buds').innerHTML='<tr><th>Department</th><th>Model</th><th>Confidence</th><th class=n>Cost per head now</th><th class=n>Expected under plan</th><th class=n>Saves per month</th><th class=n title="The most one active person may use: seat plus token cap. Not an average.">Ceiling per active person</th><th>Why</th></tr>'+
+   Object.entries(r.budgets).map(([k,v])=>`<tr><td>${k}</td><td><span class="pill ${v.verdict}">${v.verdict}</span></td><td class="${v.confidence}">${v.confidence}</td><td class=n>${usd(v.current_per_head)}</td><td class=n><b>${usd(v.expected_per_head)}</b></td><td class=n>${usd(v.saving_monthly)}<br><span class=mute style="font-size:12px">seats ${usd(v.saving_from_seats)} · caps ${usd(v.saving_from_caps)}</span></td><td class=n>${usd(v.ceiling_per_head)}<br><span class=mute style="font-size:12px">${Object.entries(v.token_cap_by_level).map(([l,c])=>l[0].toUpperCase()+l.slice(1)+' '+usd(c)).join(', ')||''}</span></td><td class=mute>${v.reason}</td></tr>`).join('');
+  const pc=r.plan.company;$('planrec').innerHTML=`<b>Where the plan's saving comes from.</b> The plan saves <b>${usd(pc.saving)} a month</b>: ${usd(pc.from_seats)} from reassigning unused seats and only ${usd(pc.from_caps)} from caps, because the department pool lets heavy users draw on colleagues' unused allowance. The extra ${usd(r.waste.over_monthly)} of above-norm spend in the headline is not captured by the plan. Hard per-person caps would save ${usd(pc.hard_cap_saving)} but cost about ${usd(pc.hard_cap_value_lost)} a month in output, so the net is similar. Training and workflow fit are the better lever for that part.`;
   const rt=r.routing;
   $('route').innerHTML='<tr><th>Department</th><th class=n>Tokens/mo (M)</th><th class=n>Routine share</th><th class=n>Saving/mo</th><th class=n>Value at risk</th><th class=n>Net gain/mo</th></tr>'+
    Object.entries(rt.by_department).map(([k,v])=>`<tr><td>${k}</td><td class=n>${v.monthly_tokens_m}</td><td class=n>${pct(v.routine_share)}</td><td class=n>${usd(v.saving)}</td><td class=n>${usd(v.value_at_risk)}</td><td class=n><b>${usd(v.net_gain)}</b></td></tr>`).join('')+

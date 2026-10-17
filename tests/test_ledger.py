@@ -425,3 +425,19 @@ def test_explain_has_no_individuals_and_covers_policies():
 def test_explain_endpoint():
     r = TestClient(app).get("/api/explain?department=Legal").json()
     assert r["department"]["department"] == "Legal" and len(r["department"]["steps"]) == 9
+
+
+def test_plan_is_cheaper_per_head_in_every_department():
+    ds, a = data.generate(), an.Assumptions()
+    for d, b in an.budget_recommendations(ds, a).items():
+        assert b["expected_per_head"] < b["current_per_head"], d
+        assert b["ceiling_per_head"] >= b["expected_per_head"] - 1e-6  # a ceiling is not an average
+        assert abs(b["saving_from_seats"] + b["saving_from_caps"] - b["saving_monthly"]) < 0.05
+
+
+def test_plan_saving_reconciles_with_waste():
+    ds, a = data.generate(), an.Assumptions()
+    p, w = an.plan_savings(ds, a)["company"], an.waste(ds, a)
+    assert abs(p["from_seats"] - w["idle_monthly"]) < 1.0   # seats part is exactly the unused-seat saving
+    assert p["saving"] <= w["total_monthly"] + 1.0          # the plan never claims more than the headline
+    assert p["hard_cap_saving"] > p["saving"] and p["hard_cap_value_lost"] > 0

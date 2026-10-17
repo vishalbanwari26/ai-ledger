@@ -24,7 +24,7 @@ IMAGE=ghcr.io/vishalbanwari26/ai-ledger:latest NEBIUS_API_KEY="paste-demo-key" .
 - [ ] The script prints an HTTPS URL. Open it.
 
 ## D. Verify the deployed app (do all four)
-- [ ] The dashboard loads and shows `$20,992` and `454 unused seats`.
+- [ ] The dashboard loads and Overview shows `$16,080 a month` and the Waste and actions tab shows `454` unused seats.
 - [ ] **Generate with Nemotron** returns a brief.
 - [ ] Ask "Who are the worst overspenders?" and confirm the answer starts "This tool does not identify or rank individuals".
 - [ ] Open the URL in a private window. It works without any login (judges need this).

@@ -9,14 +9,15 @@ analyst change slightly on every run, so do a dry run.
 (Overview tab, the three big tiles. Point at each in turn.)
 "Companies pay for AI seats and tokens for thousands of people. Almost nobody can say if it pays off.
 This is AI Ledger. For this 1,900 person company it gives three answers.
-One: about $21,000 a month can be recovered. Two: AI returns about $1.17 for every dollar, but that is not proven,
+One: $16,000 a month is spent on seats nobody uses, and up to $21,000 with high-spend seats. Two: AI returns about $1.17 for every dollar, but that is not proven,
 and only Legal is clearly positive. Three: the best budget model is variable by role.
 It does not blame anyone for any of it. I will show how."
 
 ## 0:18 to 0:42  Where the money is
 (Click the Waste and actions tab.)
 "454 seats are not in use. Under three sessions a month. That is $16,000 a month, and we only count 80 percent of a
-seat, because contracts have minimums. Another 245 seats have high spend with no matching gain. Each is compared with
+seat, because contracts have minimums. That part is solid. Another 245 seats have high spend with no matching gain,
+worth up to $5,000 more, but cutting it can cost output, so we start with training. Each is compared with
 people in the same role and level, so an intern is never measured against a senior. Engineering has the most, $8,000.
 An unused seat usually means the tool does not fit the work, or nobody explained it. That is a setup problem."
 
@@ -43,7 +44,8 @@ Most department returns depend on the assumptions, and the page says so."
 (Click the Budget policy tab.)
 "Pay per use nets the most, $75,000 a month, but the bill can rise 57 percent in a peak month,
 and it only wins while list price stays under 2.4 times the seat rate. We assumed 1.6. Get a real quote.
-Variable by role nets $39,000 with 17 percent bill risk. Caps by level are peer norms, not need.
+Variable by role nets $39,000 with 17 percent bill risk. It saves about $16,000 a month, almost all from unused seats.
+The caps are a guardrail, not the saving. Caps by level are peer norms, not need.
 Juniors and interns are never set below the department cap, because they iterate more while learning."
 
 ## 2:18 to 2:32  Show the math
@@ -73,6 +75,7 @@ The video is tight. Rehearse it twice with a timer.
 - "Is the data real?" No. It is synthetic, with a known truth, so we can score the method. docs/robustness.md shows where it breaks.
 - "Why can you trust the ROI?" Control group, pre-rollout check, and ranges. When the range includes zero it says so.
 - "Juniors may need more than this cap." Right. Caps are peer norms, not need, and juniors are floored at the department cap. Treat every cap as a starting point to adjust with the team.
+- "The recommended budget is higher than what we spend now, so where is the saving?" The recommended number is a ceiling for one active person, not an average. The average cost per head under the plan is lower in every department. The saving comes from reassigning unused seats. The page shows the split.
 - "Everything is subjective." Some of it is. The page sorts numbers into measured, estimated, assumed and judgement, and re-runs each decision in 180 assumption sets. Two hold in all of them. For the rest it says it depends.
 - "Show me the calculation." The Show the math card walks each department through nine steps with its own numbers.
 - "Why no individual view?" Ranking people on AI use invites blame and is unreliable. The tool works on seats, groups and budgets.

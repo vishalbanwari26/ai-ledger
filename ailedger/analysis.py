@@ -574,10 +574,33 @@ def pay_per_use_breakeven(ds: Dataset, a: Assumptions) -> dict:
                 note=f"Pay per use is the highest-net policy only while list price stays under {m}x the seat-plan rate.")
 
 
+def plan_savings(ds: Dataset, a: Assumptions) -> dict:
+    """Where the 'Variable by role' plan's saving comes from, per department, and what it leaves on the table."""
+    from dataclasses import replace
+    es = employees(ds, a)
+    caps = _caps(es, a, 0.75)
+    plan = next(p for p in standard_policies(a) if p.name == "Variable by role")
+    hard = replace(plan, pooled=False)  # same caps, enforced per person instead of pooled in the department
+    sq = Policy("Status quo", "")
+
+    def part(group: list[Employee]) -> dict:
+        c0, v0 = _run(group, a, sq, caps, False)
+        c1, v1 = _run(group, a, plan, caps, False)
+        c2, v2 = _run(group, a, hard, caps, False)
+        seats = sum(e.seat_cost for e in group if e.segment == "idle") * a.seat_savings_realized
+        return dict(headcount=len(group), cost_now=round(c0, 2), cost_plan=round(c1, 2),
+                    per_head_now=round(c0 / len(group), 2), per_head_plan=round(c1 / len(group), 2),
+                    saving=round(c0 - c1, 2), from_seats=round(seats, 2), from_caps=round(c0 - c1 - seats, 2),
+                    hard_cap_saving=round(c0 - c2, 2), hard_cap_value_lost=round(v0 - v2, 2))
+    depts = {d: part([e for e in es if e.department == d]) for d in sorted({e.department for e in es})}
+    return dict(company=part(es), by_department=depts)
+
+
 def budget_recommendations(ds: Dataset, a: Assumptions) -> dict:
     """Per-department verdict: fixed or variable, and a per-head monthly budget by level."""
     es = employees(ds, a)
     caps = _caps(es, a, 0.75)
+    plan = plan_savings(ds, a)["by_department"]
     out = {}
     for d in sorted({e.department for e in es}):
         group = [e for e in es if e.department == d]
@@ -605,8 +628,10 @@ def budget_recommendations(ds: Dataset, a: Assumptions) -> dict:
             verdict=verdict, reason=reason, spend_cv=round(cv, 2), confidence=roll["confidence"],
             active_share=round(len(active) / len(group), 2), recommended_seat=seat,
             recommended_token_cap=round(caps.get((d, None), 0.0), 2), token_cap_by_level=by_level,
-            recommended_per_head=round(seat + caps.get((d, None), 0.0), 2),
-            current_per_head=roll["cost_per_head"], dept_roi=roll["roi"],
+            ceiling_per_head=round(seat + caps.get((d, None), 0.0), 2),  # most one active person may use: seat + cap
+            current_per_head=roll["cost_per_head"], expected_per_head=plan[d]["per_head_plan"],
+            saving_monthly=plan[d]["saving"], saving_from_seats=plan[d]["from_seats"],
+            saving_from_caps=plan[d]["from_caps"], dept_roi=roll["roi"],
         )
     return out
 
