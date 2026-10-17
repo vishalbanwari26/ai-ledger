@@ -33,10 +33,12 @@ def breakeven(ds: Dataset, a: an.Assumptions) -> dict:
         be = cost / s if s else None
         if be is None:
             verdict = "no users"
-        elif lo > be:
-            verdict = "clearly above break-even"
+        elif lo > be:  # a margin under a quarter of the range's half-width is "just", not "clearly"
+            verdict = ("above break-even, but only just: the low end of the range is at it" if (lo - be) < 0.25 * (measured - lo)
+                       else "clearly above break-even")
         elif hi < be:
-            verdict = "clearly below break-even"
+            verdict = ("below break-even, but only just: the top of the range is at it" if (be - hi) < 0.25 * (hi - measured)
+                       else "clearly below break-even")
         else:
             verdict = "not distinguishable from break-even"
         return dict(cost=round(cost, 2), breakeven=None if be is None else round(be, 4), measured=round(measured, 4),

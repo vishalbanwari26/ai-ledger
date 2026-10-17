@@ -656,3 +656,11 @@ def test_measured_effect_is_ordered_by_experience_in_the_calibrated_company():
     eff = [x["effect"] for x in L["levels"]]
     assert eff == sorted(eff, reverse=True)             # intern > junior > mid > senior
     assert L["verdict"] == "less experienced people gain more" and L["difference"] > 0.02
+
+
+def test_breakeven_verdict_does_not_overclaim_a_near_miss():
+    from ailedger import bench
+    c = bench.breakeven(data.generate(), an.Assumptions())["company"]
+    margin, half = c["low"] - c["breakeven"], c["measured"] - c["low"]
+    assert 0 <= margin < 0.25 * half                      # the low end sits right at break-even in the default company
+    assert c["verdict"].startswith("above break-even, but only just")
