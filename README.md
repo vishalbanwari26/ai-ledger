@@ -8,11 +8,13 @@ data, and lets you question the results in plain English. Answers come from NVID
 
 ## What it does
 
-- **Finds waste:** idle seats and overspenders, with the share of a seat you can actually cancel after contract friction.
+- **Finds waste:** unused seats and above-norm spend on high-spend seats, with the share of a seat you can actually cancel after contract friction.
 - **Estimates return honestly:** compares each person to their own first two months, then subtracts what happened to
   people who never adopted (difference-in-differences). Growth is a ratio, so an intern and a senior are comparable.
   Estimates are shrunk toward the department mean by how noisy individuals are, and every ROI carries a 95% range.
   A department whose range includes zero is labelled uncertain, and gets "review", never "restrict".
+- **Checks that adopters were not already ahead:** compares adopters and non-adopters in the months before rollout and
+  removes any pre-existing gap, with a warning when it is significant.
 - **Compares peers fairly:** overspend is judged against people of the same role and level, never the whole department.
 - **Simulates four budget policies:** status quo, fixed, pay per use, variable by role. Ranked on net dollars and bill
   risk (extra cost if everyone spends at their own peak month), not on the ROI ratio, which rises whenever spend falls.
@@ -22,8 +24,9 @@ data, and lets you question the results in plain English. Answers come from NVID
 - **Watches drift:** monthly spend per department with alerts for sudden jumps.
 - **Checks itself:** on the synthetic company the generator keeps hidden truth labels, and the app scores how well the
   analysis recovers them (precision and recall), including part-timers, people on leave and new hires.
-- **Privacy by default:** groups under 10 people are never shown and no individuals are named. Set `LEDGER_ADMIN=1`
-  to see employee IDs (do this only behind real authentication).
+- **No blaming, no individuals:** results are shown for groups of 10 or more. Nobody is named, ranked or exported, and
+  the analyst is instructed to frame findings as seat allocation, training, tools and budget design, with enablement
+  suggested before any seat or cap change. A test fails if blaming words or employee IDs reach the output.
 
 ## How the Nemotron analyst works
 
@@ -74,7 +77,9 @@ Use a key created only for the demo and rotate it afterwards. Stop or delete the
 
 - The demo company is synthetic. Value is an estimate built on stated assumptions; the sliders show how sensitive the
   conclusions are, and "break-even credit" shows how much of the estimated gain must be real for a team to pay for itself.
-- Adopters choose to adopt, so they may differ from non-adopters. The control group removes shared trends such as
-  seasonality, not self-selection. A real rollout with random or staggered assignment would be stronger evidence.
+- Adopters choose to adopt. The control group removes shared trends such as seasonality, and the pre-rollout check
+  removes a gap that already existed. Differences that start only at rollout cannot be told apart from the AI effect.
+  A rollout with random or staggered assignment would be stronger evidence.
+- Pay per use depends on an assumed list-price multiplier. The app shows the break-even multiplier; get a real quote.
 - Level differences in dollar ROI mostly reflect hourly rate. Do not cut a level's access on ROI alone.
 - The routine-token share per department and the cheaper model's price are planning assumptions, not measurements.

@@ -5,7 +5,7 @@ vendor billing (cost, tokens, sessions) with its own work systems (outcome units
 (role, level, loaded hourly rate). There is deliberately no "baseline" column: the analysis
 estimates the AI effect from the data itself, using people who did not adopt as the control group.
 
-The generator also keeps hidden ground-truth labels (who is really a power user, who is wasteful).
+The generator also keeps hidden ground-truth labels (who is really a power user, who uses a lot without gaining output).
 They never reach the analysis; they exist so tests can measure how well the analysis recovers them.
 """
 from __future__ import annotations
@@ -49,17 +49,17 @@ LEVELS = {  # share of headcount, token mult, output mult, hourly-rate mult
 ARCHETYPES = {
     "power": dict(lift=0.22, usage=1.0, sessions=(60, 120)),
     "steady": dict(lift=0.10, usage=0.35, sessions=(20, 50)),
-    "tourist": dict(lift=0.02, usage=0.08, sessions=(2, 10)),
-    "shelfware": dict(lift=0.0, usage=0.0, sessions=(0, 1)),
-    "wasteful": dict(lift=0.0, usage=1.6, sessions=(80, 200)),
+    "light": dict(lift=0.02, usage=0.08, sessions=(2, 10)),
+    "unused": dict(lift=0.0, usage=0.0, sessions=(0, 1)),
+    "heavy_no_gain": dict(lift=0.0, usage=1.6, sessions=(80, 200)),
 }
 MIX = {
-    "Engineering": {"power": 0.35, "steady": 0.35, "tourist": 0.12, "shelfware": 0.10, "wasteful": 0.08},
-    "Support": {"power": 0.30, "steady": 0.40, "tourist": 0.15, "shelfware": 0.10, "wasteful": 0.05},
-    "Sales": {"power": 0.10, "steady": 0.25, "tourist": 0.25, "shelfware": 0.25, "wasteful": 0.15},
-    "Marketing": {"power": 0.20, "steady": 0.30, "tourist": 0.15, "shelfware": 0.10, "wasteful": 0.25},
-    "Finance": {"power": 0.08, "steady": 0.22, "tourist": 0.25, "shelfware": 0.40, "wasteful": 0.05},
-    "Legal": {"power": 0.20, "steady": 0.30, "tourist": 0.20, "shelfware": 0.20, "wasteful": 0.10},
+    "Engineering": {"power": 0.35, "steady": 0.35, "light": 0.12, "unused": 0.10, "heavy_no_gain": 0.08},
+    "Support": {"power": 0.30, "steady": 0.40, "light": 0.15, "unused": 0.10, "heavy_no_gain": 0.05},
+    "Sales": {"power": 0.10, "steady": 0.25, "light": 0.25, "unused": 0.25, "heavy_no_gain": 0.15},
+    "Marketing": {"power": 0.20, "steady": 0.30, "light": 0.15, "unused": 0.10, "heavy_no_gain": 0.25},
+    "Finance": {"power": 0.08, "steady": 0.22, "light": 0.25, "unused": 0.40, "heavy_no_gain": 0.05},
+    "Legal": {"power": 0.20, "steady": 0.30, "light": 0.20, "unused": 0.20, "heavy_no_gain": 0.10},
 }
 TOKEN_PRICE_PER_M = 5.0  # blended $/1M tokens across fast and frontier models, after caching
 MONTHS = ["2026-05", "2026-06", "2026-07", "2026-08", "2026-09"]
@@ -89,8 +89,14 @@ def _pick(rng: random.Random, mix: dict[str, float]) -> str:
     return list(mix)[-1]
 
 
-def generate(seed: int = 7, messy: bool = True) -> Dataset:
-    """messy=True adds the cases that break naive analysis: part-timers, people on leave, new hires."""
+def generate(seed: int = 7, messy: bool = True, noise: float = 0.07, trend: float = COMPANY_TREND,
+             adopter_drift: float = 0.0, scale: float = 1.0) -> Dataset:
+    """messy=True adds the cases that break naive analysis: part-timers, people on leave, new hires.
+
+    Knobs for stress tests: noise (monthly output noise, +/- fraction), trend (company-wide monthly growth),
+    adopter_drift (extra monthly growth that people who use AI would have had anyway: self-selection),
+    scale (headcount multiplier).
+    """
     rng = random.Random(seed)
     rows: list[dict] = []
     truth: dict[str, dict] = {}
@@ -99,7 +105,7 @@ def generate(seed: int = 7, messy: bool = True) -> Dataset:
     level_p = [LEVELS[k]["share"] for k in level_names]
     for dept, count in HEADCOUNT.items():
         role, _unit, hpu, rate, base = ROLES[dept]
-        for _ in range(count):
+        for _ in range(max(1, round(count * scale))):
             n += 1
             eid = f"E{n:04d}"
             arch_name = _pick(rng, MIX[dept])
@@ -112,18 +118,22 @@ def generate(seed: int = 7, messy: bool = True) -> Dataset:
             new_hire = messy and rng.random() < 0.05
             leave_month = rng.choice([3, 4]) if messy and rng.random() < 0.05 else None
             truth[eid] = dict(archetype=arch_name, level=level, department=dept,
-                              new_hire=new_hire, part_time=part_time, leave=leave_month is not None)
+                              new_hire=new_hire, part_time=part_time, leave=leave_month is not None,
+                              lift_window=0.0, base_units=personal_base)
+            win_lifts: list[float] = []
             for i, month in enumerate(MONTHS):
                 if new_hire and i < 3:
                     continue  # joined in month 3: no pre-period
-                active = arch_name != "shelfware" and i >= adopt_at
+                active = arch_name != "unused" and i >= adopt_at
                 ramp = min(1.0, 0.5 + 0.25 * (i - adopt_at)) if active else 0.0
                 lo, hi = arch["sessions"]
                 sessions = int(rng.uniform(lo, hi) * ramp) if active and hi > 1 else 0
                 tokens = int(arch["usage"] * TOKEN_MULT[dept] * lv["tok"] * ramp * rng.uniform(2.0e6, 6.0e6)) if sessions else 0
                 lift = arch["lift"] * ramp
-                trend = (1 + COMPANY_TREND) ** i
-                units = personal_base * trend * (1 + lift) * rng.uniform(0.93, 1.07)
+                growth = (1 + trend) ** i * ((1 + adopter_drift) ** i if arch_name != "unused" else 1.0)
+                units = personal_base * growth * (1 + lift) * rng.uniform(1 - noise, 1 + noise)
+                if i >= 2:
+                    win_lifts.append(lift)
                 if part_time:
                     units *= 0.5
                     sessions //= 2
@@ -138,6 +148,7 @@ def generate(seed: int = 7, messy: bool = True) -> Dataset:
                     tokens=tokens, sessions=sessions, outcome_units=round(units, 2),
                     hours_per_unit=hpu, hourly_rate=round(rate * lv["rate"], 2),
                 ))
+            truth[eid]["lift_window"] = sum(win_lifts) / len(win_lifts) if win_lifts else 0.0
     return Dataset(rows, truth)
 
 

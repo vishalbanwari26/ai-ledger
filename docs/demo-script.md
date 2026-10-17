@@ -1,6 +1,6 @@
 # Demo video script (target 2:50, limit 3:00)
 
-Record the browser at 1440 wide, dark mode, default synthetic company, privacy mode (no LEDGER_ADMIN).
+Record the browser at 1440 wide, dark mode, default synthetic company, no individuals are shown anywhere.
 Speak plainly, no reading from the page. Check every number on screen right before recording; moving a slider changes them.
 
 ## 0:00 to 0:20  The problem
@@ -12,8 +12,8 @@ That is $262,000 a year."
 ## 0:20 to 0:50  Where the money goes
 (Scroll to the waste table.)
 "454 seats are idle. Under three sessions a month. We only count the share of a seat you can really cancel,
-because contracts have minimums. 244 more people spend far above peers of the same role and level, with negative return.
-Same level matters: an intern working on a small feature is not compared with a senior.
+because contracts have minimums. Another 244 seats have high spend with no matching gain, compared with the same role and level.
+Same level matters: an intern working on a small feature is not compared with a senior. Nobody is named: this is about how seats and budgets are set up.
 Engineering carries the most, $8,800 a month."
 
 ## 0:50 to 1:15  Act on it

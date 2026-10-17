@@ -34,15 +34,28 @@ Rules:
   separate that department from break-even, and quote roi_low and roi_high.
 - Differences between levels (intern vs senior) mostly reflect hourly rate, because value is time saved times rate.
   Never recommend cutting access for a level on ROI alone; say what else matters (learning, ramp-up).
-- Employee-level data may be grouped for privacy. Never try to identify individuals.
+- Never blame, name, rank or characterise individual people, and never use words like lazy, wasteful, offender
+  or abuser. Findings are about how seats, training, tools and budgets are set up. Say 'seats not in use' and
+  'high spend without matching gain'. For each issue suggest the system fix first (training, workflow fit, asking the
+  team, a team budget) and treat changing a seat or cap as the last step.
+- Only recommend seat or cap changes that appear in get_actions, with its numbers. A low-ROI group is a reason to
+  check tool fit and training, never by itself a reason to remove seats, and never for interns or juniors.
+- If asked who to cut, or for the worst people, say once that this tool does not identify or rank individuals, then
+  answer at group level. Say 'lowest-return groups', never 'worst', and say 'seat changes', never 'cutting people'.
+- Definitions: an unused seat averages under 3 sessions a month; a high-spend seat spends above the 75th percentile of
+  ROI-positive peers of the same department and level while its ROI is negative.
+- Pay per use depends on an assumed list-price multiplier and ration rate. Whenever you mention it, state the
+  assumed multiplier and the break-even multiplier from pay_per_use_breakeven. Tell the user to get a real quote.
+- If summary.company.selection.significant is true, warn that adopters were already pulling ahead before rollout,
+  that this was removed, and that the effect estimate is less certain.
 - Be direct. Lead with the answer, then the two or three numbers that support it. No filler."""
 
 TOOLS = [
     {"type": "function", "function": {
-        "name": "get_summary", "description": "Company and per-department cost, value, ROI, idle seats, overspenders.",
+        "name": "get_summary", "description": "Company and per-department cost, value, ROI, unused seats, high-spend seats.",
         "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {
-        "name": "get_waste", "description": "Recoverable monthly spend: idle seats plus overspend above what "
+        "name": "get_waste", "description": "Recoverable monthly spend: unused seats plus spend above what "
         "ROI-positive peers spend, company-wide and per department, with annual total.",
         "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {
@@ -54,8 +67,8 @@ TOOLS = [
         "the value put at risk, and net gain, per department.",
         "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {
-        "name": "list_employees", "description": "Groups (or, in admin mode, employees) ranked by ROI, optionally filtered by department and segment "
-        "(idle, overspender, low-return, break-even, high-return).",
+        "name": "list_groups", "description": "Department-and-level groups ranked by ROI, optionally filtered by department and segment "
+        "(idle, high-spend, low-return, break-even, high-return). Never returns individuals.",
         "parameters": {"type": "object", "properties": {
             "department": {"type": "string"}, "segment": {"type": "string"},
             "limit": {"type": "integer"}, "worst_first": {"type": "boolean"}}}}},
@@ -78,7 +91,6 @@ _MODELS: dict[str, str] | None = None
 class Analyst:
     ds: Dataset
     assumptions: an.Assumptions = field(default_factory=an.Assumptions)
-    admin: bool = field(default_factory=lambda: os.environ.get("LEDGER_ADMIN") == "1")
     _client: OpenAI | None = None
     _models: dict[str, str] | None = None
 
@@ -120,51 +132,107 @@ class Analyst:
         if name == "get_waste":
             return an.waste(ds, a)
         if name == "get_actions":
-            return an.actions(ds, a, self.admin)
+            return an.actions(ds, a)
         if name == "get_routing":
             return an.routing(ds, a)
-        if name == "list_employees":
+        if name in ("list_groups", "list_employees"):
             return an.list_people(ds, a, args.get("department"), args.get("segment"),
-                                  min(int(args.get("limit", 10)), 25), args.get("worst_first", True), self.admin)
+                                  min(int(args.get("limit", 10)), 25), args.get("worst_first", True))
         if name == "compare_policies":
-            return an.compare_policies(ds, a)
+            return dict(policies=an.compare_policies(ds, a), pay_per_use_breakeven=an.pay_per_use_breakeven(ds, a))
         if name == "budget_recommendations":
             return an.budget_recommendations(ds, a)
         return {"error": f"unknown tool {name}"}
 
     # ----------------------------------------------------------- calls
-    def ask(self, question: str, max_steps: int = 6) -> dict:
+    def _loop(self, msgs: list[dict], max_steps: int = 6) -> tuple[str, list[dict]]:
         m = self.models()["reason"]
-        msgs = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": question}]
-        evidence = []
+        evidence: list[dict] = []
         for _ in range(max_steps):
             r = self.client().chat.completions.create(model=m, messages=msgs, tools=TOOLS, temperature=0.2)
             msg = r.choices[0].message
             if not msg.tool_calls:
-                return dict(answer=_strip_think(msg.content or ""), evidence=evidence, model=m)
+                return _strip_think(msg.content or ""), evidence
             msgs.append(msg.model_dump(exclude_none=True))
             for tc in msg.tool_calls:
                 args = json.loads(tc.function.arguments or "{}")
                 result = self.run_tool(tc.function.name, args)
                 evidence.append(dict(tool=tc.function.name, args=args, result=result))
                 msgs.append({"role": "tool", "tool_call_id": tc.id, "content": json.dumps(result)})
-        return dict(answer="I ran out of steps before reaching an answer.", evidence=evidence, model=m)
+        return "I ran out of steps before reaching an answer.", evidence
+
+    def ask(self, question: str) -> dict:
+        m = self.models()["reason"]
+        targeted = asks_about_individuals(question)
+        q = reframe(question) if targeted else question
+        msgs = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": q}]
+        answer, evidence = self._loop(msgs)
+        repaired = False
+        if blames(answer):  # one repair pass, then a deterministic fallback: blame never reaches the user
+            repaired = True
+            msgs = [{"role": "system", "content": SYSTEM},
+                    {"role": "user", "content": "Rewrite this answer so it never blames, names or ranks people and "
+                     "uses only these terms: unused seats, high-spend seats, lowest-return groups, seat changes. "
+                     "Keep every number. Do not call any tool.\n\n" + answer}]
+            answer = _strip_think(self.client().chat.completions.create(model=m, messages=msgs, temperature=0.1)
+                                  .choices[0].message.content or "")
+            if blames(answer):
+                answer = self.safe_summary()
+        if targeted:
+            answer = ("This tool does not identify or rank individuals. Here is the group-level view.\n\n" + answer)
+        return dict(answer=answer, evidence=evidence, model=m, reframed=targeted, repaired=repaired)
+
+    def safe_summary(self) -> str:
+        w = an.waste(self.ds, self.assumptions)
+        acts = an.actions(self.ds, self.assumptions)[:5]
+        lines = [f"Recoverable spend is ${w['total_monthly']:,.0f} a month (${w['total_annual']:,.0f} a year): "
+                 f"{w['idle_seats']} unused seats and {w['over_people']} high-spend seats without matching gain.",
+                 "Largest proposed changes, to discuss with each team first:"]
+        lines += [f"- {r['kind']}: {r['department']} ({r['level']}), {r['people']} seats, ${r['monthly_saving']:,.0f} a month"
+                  for r in acts]
+        return "\n".join(lines)
 
     def brief(self) -> dict:
         """One cheap call: executive summary of the current numbers using the fast model."""
         m = self.models()["fast"]
         data = {"summary": an.summary(self.ds, self.assumptions), "waste": an.waste(self.ds, self.assumptions),
                 "routing": an.routing(self.ds, self.assumptions),
-                "policies": an.compare_policies(self.ds, self.assumptions)}
+                "policies": an.compare_policies(self.ds, self.assumptions),
+                "pay_per_use_breakeven": an.pay_per_use_breakeven(self.ds, self.assumptions)}
         r = self.client().chat.completions.create(
             model=m, temperature=0.2,
             messages=[{"role": "system", "content": SYSTEM},
                       {"role": "user", "content": "Write a 4 sentence executive brief for the CFO from this data. "
-                       "Open with the total recoverable waste (idle seats plus overspend, monthly and annual) and the department "
+                       "Open with the total recoverable spend (unused seats plus above-norm spend, monthly and annual) and the department "
                        "with the most. Then name the best and worst department by ROI. For policies, "
                        "recommend by net monthly dollars and bill_risk, not by ROI ratio alone, and name the "
                        "trade-off. Use exact figures.\n" + json.dumps(data)}])
         return dict(brief=_strip_think(r.choices[0].message.content or ""), model=m)
+
+
+_BLAME = re.compile(
+    r"\b(lazy|wasteful|offenders?|abusers?|overspenders?|slackers?|freeloaders?|over-allocated people)\b"
+    r"|\bworst (?:performers?|employees?|people|users?|overspend\w*)\b"
+    r"|\b(?:cut|fire|sack|lay off|terminate|remove) (?:individuals?|people|employees?|staff|workers?)\b", re.I)
+_TARGETED = re.compile(
+    r"\b(who (?:is|are|should|do)\b|which (?:individuals?|people|employees?|persons?|staff)|names?\b|"
+    r"individuals?|worst (?:people|employees?|performers?|users?|overspenders?)|top spenders?|"
+    r"(?:cut|fire|sack|lay off|terminate) (?:people|employees?|staff))", re.I)
+
+
+def blames(text: str) -> bool:
+    return bool(_BLAME.search(text))
+
+
+def asks_about_individuals(question: str) -> bool:
+    return bool(_TARGETED.search(question))
+
+
+def reframe(question: str) -> str:
+    """Replace a question about people with a standalone one about seats and groups, before the model sees it."""
+    return ("Where is the recoverable AI spend by department, which group-level changes should we discuss first "
+            "(use get_waste and get_actions), and what should we check with each team before changing any seat "
+            "or budget? Answer in under 200 words, group level only.")
 
 
 def _size_hint(model_id: str) -> float:

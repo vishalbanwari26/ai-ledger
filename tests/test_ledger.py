@@ -152,7 +152,7 @@ def test_control_group_removes_company_trend():
     s = an.summary(data.generate(), an.Assumptions())["company"]
     assert s["did_lift"] < s["naive_lift"]
     assert 0.04 < s["control_growth"] < 0.08  # 2.5%/month trend over the window
-    assert abs(s["naive_lift"] - s["control_growth"] - s["did_lift"]) < 1e-3
+    assert abs((1 + s["naive_lift"]) / (1 + s["control_growth"]) - 1 - s["did_lift"]) < 5e-3
 
 
 def test_estimated_lift_orders_archetypes_correctly():
@@ -162,8 +162,8 @@ def test_estimated_lift_orders_archetypes_correctly():
         if e.treated and e.own_baseline:
             by.setdefault(ds.truth[e.employee_id]["archetype"], []).append(e.lift)
     mean = {k: sum(v) / len(v) for k, v in by.items()}
-    assert mean["power"] > mean["steady"] > mean["wasteful"]
-    assert mean["power"] > 0.10 and abs(mean["wasteful"]) < 0.06
+    assert mean["power"] > mean["steady"] > mean["heavy_no_gain"]
+    assert mean["power"] > 0.10 and abs(mean["heavy_no_gain"]) < 0.06
 
 
 def test_people_without_baseline_get_department_effect():
@@ -188,35 +188,50 @@ def test_small_cohort_falls_back_to_department():
     assert med(es[0]) == 100.0  # 3 interns is too few to be their own peer group
 
 
-def test_privacy_mode_names_nobody():
+def test_nothing_identifies_a_person():
+    import json, re
     ds, a = data.generate(), an.Assumptions()
     for row in an.list_people(ds, a, limit=25):
         assert "employee_id" not in row and row["people"] >= a.min_group
-    for row in an.actions(ds, a, admin=False):
+    for row in an.actions(ds, a):
         assert "employee_ids" not in row and row["people"] >= a.min_group
-    assert all("employee_id" in r for r in an.list_people(ds, a, limit=5, admin=True))
-    assert any("employee_ids" in r for r in an.actions(ds, a, admin=True))
+    body = json.dumps(TestClient(app).get("/api/report").json()) + TestClient(app).get("/api/actions.csv").text
+    assert not re.search(r"E\d{4}", body)  # no employee id anywhere a viewer can see it
+
+
+def test_language_never_blames_people():
+    import pathlib
+    banned = ("lazy", "wasteful", "offender", "abuser", "overspender", "worst performer", "slacker")
+    root = pathlib.Path(__file__).resolve().parent.parent
+    for path in [*root.glob("ailedger/*.py"), root / "static/index.html", root / "README.md"]:
+        if path.name == "llm.py":
+            continue  # holds the ban list and prompt rules by necessity; the detector has its own tests
+        text = path.read_text().lower()
+        for w in banned:
+            assert w not in text, f"{w} in {path.name}"
+    for r in an.actions(data.generate(), an.Assumptions()):
+        assert not any(w in r["reason"].lower() for w in banned)
 
 
 def test_actions_saving_matches_waste():
     ds, a = data.generate(), an.Assumptions()
     w = an.waste(ds, a)
-    total = sum(r["monthly_saving"] for r in an.actions(ds, a, admin=True))
-    assert abs(total - w["total_monthly"]) < 1.0
+    total = sum(r["monthly_saving"] for r in an.actions(ds, a))
+    assert w["total_monthly"] * 0.99 <= total <= w["total_monthly"] + 1.0  # tiny groups may be left out, never added
 
 
 def test_analysis_recovers_hidden_truth():
     v = an.validate(data.generate(), an.Assumptions())
     assert v["idle_seats"]["recall"] > 0.95          # every shelfware seat found
     assert v["idle_vs_nonusers"]["precision"] > 0.95  # nearly all flagged seats are truly unused
-    assert v["overspenders"]["recall"] > 0.7 and v["overspenders"]["precision"] > 0.6
+    assert v["high_spend"]["recall"] > 0.7 and v["high_spend"]["precision"] > 0.6
     assert v["no_value"]["recall"] > 0.8
 
 
 def test_validation_survives_noise_seeds():
     for seed in (1, 2, 3):
         v = an.validate(data.generate(seed=seed), an.Assumptions())
-        assert v["idle_vs_nonusers"]["precision"] > 0.9 and v["overspenders"]["recall"] > 0.6
+        assert v["idle_vs_nonusers"]["precision"] > 0.9 and v["high_spend"]["recall"] > 0.6
 
 
 def test_routing_saving_vanishes_when_prices_equal():
@@ -266,3 +281,98 @@ def test_restrict_only_when_loss_is_clear():
             assert b["confidence"] == "clear" and b["dept_roi"] < 0
         if b["confidence"] == "uncertain" and b["dept_roi"] < 0:
             assert b["verdict"] == "review"
+
+
+def _true_lift(ds, a):
+    es = an.employees(ds, a)
+    tl = [ds.truth[e.employee_id]["lift_window"] for e in es if e.treated and e.own_baseline]
+    return sum(tl) / len(tl)
+
+
+def test_effect_stays_accurate_under_large_company_trend():
+    ds, a = data.generate(trend=0.10), an.Assumptions()
+    s = an.summary(ds, a)["company"]
+    assert abs(s["did_lift"] - _true_lift(ds, a)) < 0.01  # additive subtraction was off by about 2 points here
+
+
+def test_self_selection_is_detected_and_corrected():
+    a = an.Assumptions()
+    ds = data.generate(adopter_drift=0.01)
+    sel = an.selection(ds, a)
+    assert sel["adjusted"] and sel["gap_per_month"] > 0.002
+    assert abs(an.summary(ds, a)["company"]["did_lift"] - _true_lift(ds, a)) < 0.015
+    off = an.Assumptions(adjust_pretrend=False)
+    assert abs(an.summary(ds, off)["company"]["did_lift"] - _true_lift(ds, off)) > abs(an.summary(ds, a)["company"]["did_lift"] - _true_lift(ds, a))
+
+
+def test_no_selection_warning_on_clean_data():
+    assert not an.selection(data.generate(), an.Assumptions())["significant"]
+
+
+def test_strong_selection_raises_warning():
+    assert an.selection(data.generate(adopter_drift=0.03), an.Assumptions())["significant"]
+
+
+def test_selection_check_skipped_with_one_pre_month():
+    sel = an.selection(data.generate(), an.Assumptions(pre_months=1))
+    assert not sel["tested"] and not sel["adjusted"] and not sel["significant"]
+
+
+def test_pay_per_use_breakeven_is_consistent():
+    ds = data.generate()
+    a = an.Assumptions()
+    b = an.pay_per_use_breakeven(ds, a)
+    assert b["multiplier"] and b["multiplier"] > 1.0
+    below = an.compare_policies(ds, an.Assumptions(ppu_multiplier=b["multiplier"] - 0.2))
+    above = an.compare_policies(ds, an.Assumptions(ppu_multiplier=b["multiplier"] + 0.2))
+    assert next(r for r in below if r["highest_net"])["name"] == "Pay per use"
+    assert next(r for r in above if r["highest_net"])["name"] != "Pay per use"
+
+
+def test_assumed_multiplier_changes_pay_per_use_only():
+    ds = data.generate()
+    lo = {r["name"]: r for r in an.compare_policies(ds, an.Assumptions(ppu_multiplier=1.0))}
+    hi = {r["name"]: r for r in an.compare_policies(ds, an.Assumptions(ppu_multiplier=3.0))}
+    assert lo["Pay per use"]["net"] > hi["Pay per use"]["net"]
+    assert lo["Variable by role"]["net"] == hi["Variable by role"]["net"]
+
+
+def test_blame_detector_and_question_reframing():
+    assert llm.blames("These are the worst overspenders, cut individuals.")
+    assert llm.blames("Reassign 245 over-allocated people")
+    assert not llm.blames("Reassign 454 unused seats; Engineering is the lowest-return group.")
+    assert not llm.blames("Finance has the worst ROI of the departments.")
+    assert llm.asks_about_individuals("Who are the worst overspenders and which individuals should we cut?")
+    assert not llm.asks_about_individuals("Is a variable budget better than fixed for Sales?")
+    r = llm.reframe("who is wasting tokens?")
+    assert "get_actions" in r and "wasting" not in r  # the original wording never reaches the model
+
+
+def _stub_analyst(replies):
+    a = llm.Analyst(ds=data.generate())
+    a._models = {"fast": "f", "reason": "r"}
+    it = iter(replies)
+
+    def create(**kw):
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(tool_calls=None, content=next(it)))])
+    a._client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    return a
+
+
+def test_blaming_answer_is_repaired_then_falls_back():
+    a = _stub_analyst(["Cut the worst overspenders.", "Still blaming the offenders."])
+    out = a.ask("which departments cost most?")
+    assert not llm.blames(out["answer"]) and out["repaired"]
+    assert "unused seats" in out["answer"]  # deterministic safe summary
+
+
+def test_repair_pass_used_when_it_works():
+    a = _stub_analyst(["Cut the lazy offenders.", "Reassign 454 unused seats."])
+    out = a.ask("what should we do?")
+    assert out["answer"] == "Reassign 454 unused seats." and out["repaired"]
+
+
+def test_person_question_is_reframed_and_prefixed():
+    a = _stub_analyst(["Engineering has the most recoverable spend."])
+    out = a.ask("Who are the worst overspenders?")
+    assert out["reframed"] and out["answer"].startswith("This tool does not identify or rank individuals")

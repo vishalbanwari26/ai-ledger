@@ -7,13 +7,16 @@ How value is estimated (the part a skeptic will attack, so it is spelled out):
   1. Each person's output in the first `pre_months` months is their own baseline (before rollout).
   2. Growth = median output in the last `window_months` months / baseline - 1.
   3. People who did not adopt (idle all window) are the control group. Their growth is what happens
-     anyway: seasonality, a busy quarter. Treated growth minus control growth is the AI effect
-     (difference-in-differences). Growth is a ratio, so an intern and a senior are comparable.
+     anyway: seasonality, a busy quarter. The AI effect is (1 + treated growth) / (1 + control growth) - 1
+     (difference-in-differences in ratio form, because effects multiply with trend). Growth is a ratio,
+     so an intern and a senior are comparable.
+  3b. Parallel-trends check: before rollout, adopters and non-adopters should have grown alike. If adopters
+     were already growing faster (self-selection), that gap is extrapolated and removed, and a warning is shown.
   4. Each person's estimate is shrunk toward their department's treated average, by how noisy the
      individual numbers are. This stops one lucky or unlucky month deciding anyone's ROI.
   5. Dollar value = effect x baseline output x hours per unit x hourly rate x `realization`.
-Limit: adopters choose to adopt, so they may differ from non-adopters. The control group removes shared
-trends, not self-selection. The UI says so.
+Limit: the pre-rollout check only sees differences that show up before rollout, and assumes they continue at a
+steady rate. Adopters who improve for reasons that start at rollout cannot be told apart from the AI effect.
 """
 from __future__ import annotations
 
@@ -41,6 +44,9 @@ class Assumptions:
     quality_penalty: float = 0.02     # value lost on tokens moved to the cheaper model
     min_cohort: int = 8               # peer groups smaller than this fall back to the whole department
     min_group: int = 10               # groups smaller than this are never shown separately
+    adjust_pretrend: bool = True      # remove a growth gap that adopters already had before rollout
+    ppu_multiplier: float = 1.6       # pay per use: list price of tokens vs the seat-plan rate. Get a real quote.
+    ppu_friction: float = 0.05        # pay per use: share of value lost because people ration metered use
 
 
 @dataclass
@@ -87,6 +93,7 @@ def _analyze(ds: Dataset, a: Assumptions) -> tuple[list[Employee], dict]:
     es: list[Employee] = []
     units_pre: dict[str, float] = {}
     units_win: dict[str, float] = {}
+    g01: dict[str, float] = {}  # growth between the two pre-rollout months, for the parallel-trends check
     for eid, rs in by_emp.items():
         w = [r for r in rs if r["month"] in win_m]
         if not w:
@@ -101,6 +108,9 @@ def _analyze(ds: Dataset, a: Assumptions) -> tuple[list[Employee], dict]:
         e.sessions = sum(r["sessions"] for r in w) / n
         e.treated = e.sessions >= a.idle_sessions
         units_win[eid] = st.median(r["outcome_units"] for r in w)  # median: one leave month must not decide it
+        um = {r["month"]: r["outcome_units"] for r in rs}
+        if len(pre_m) >= 2 and um.get(pre_m[0], 0) > 0 and pre_m[1] in um:
+            g01[eid] = um[pre_m[1]] / um[pre_m[0]] - 1
         if pre:
             units_pre[eid] = st.mean(r["outcome_units"] for r in pre)
             if units_pre[eid] > 0:
@@ -109,6 +119,20 @@ def _analyze(ds: Dataset, a: Assumptions) -> tuple[list[Employee], dict]:
         e.hpu = w[0]["hours_per_unit"]  # type: ignore[attr-defined]
         e.rate = w[0]["hourly_rate"]    # type: ignore[attr-defined]
         es.append(e)
+
+    # --- parallel-trends check: did adopters already grow faster than non-adopters before rollout?
+    sel = dict(tested=False, gap_per_month=0.0, se=0.0, significant=False, horizon=0.0, adjusted=False,
+               adjustment=0.0)
+    gt = [g01[e.employee_id] for e in es if e.treated and e.employee_id in g01]
+    gc = [g01[e.employee_id] for e in es if not e.treated and e.employee_id in g01]
+    horizon = (st.mean(months.index(m) for m in win_m) - st.mean(months.index(m) for m in pre_m)) if pre_m else 0.0
+    if len(gt) >= a.min_cohort and len(gc) >= a.min_cohort:
+        gap = (1 + st.mean(gt)) / (1 + st.mean(gc)) - 1
+        gse = ((_var(gt) / len(gt) + _var(gc) / len(gc)) ** 0.5) / (1 + st.mean(gc))
+        sel.update(tested=True, gap_per_month=gap, se=gse, significant=abs(gap) > Z95 * gse, horizon=horizon)
+        if a.adjust_pretrend:  # always apply the point estimate; its noise is added to the ranges below
+            sel.update(adjusted=True, adjustment=(1 + gap) ** horizon - 1)
+    drift = (1 + sel["gap_per_month"]) ** sel["horizon"] if sel["adjusted"] else 1.0
 
     # --- difference-in-differences per department (control = non-adopters with a baseline)
     company_ctrl = [e.growth for e in es if not e.treated and e.growth is not None]
@@ -119,24 +143,26 @@ def _analyze(ds: Dataset, a: Assumptions) -> tuple[list[Employee], dict]:
         pooled = len(ctrl) < a.min_cohort
         if pooled:
             ctrl = company_ctrl
-        c_mean = st.mean(ctrl) if ctrl else 0.0
+        c_raw = st.mean(ctrl) if ctrl else 0.0
+        c_eff = (1 + c_raw) * drift - 1  # what treated people would have grown without AI
         c_var = _var(ctrl)
         tr = [e for e in group if e.treated and e.growth is not None]
         t_growth = [e.growth for e in tr]
         naive = st.mean(t_growth) if t_growth else 0.0
-        did = naive - c_mean
+        did = (1 + naive) / (1 + c_eff) - 1
         v_t = _var(t_growth)
-        se = ((v_t / len(t_growth) if t_growth else 0.0) + (c_var / len(ctrl) if ctrl else 0.0)) ** 0.5
+        se = ((v_t / len(t_growth) if t_growth else 0.0) + (c_var / len(ctrl) if ctrl else 0.0)) / (1 + c_eff) ** 2
+        se = (se + ((1 + did) * sel["horizon"] * sel["se"] if sel["adjusted"] else 0.0) ** 2) ** 0.5
         shrink = max(0.0, 1 - c_var / v_t) if v_t > 0 else 0.0
         stats[d] = dict(naive_lift=naive, did_lift=did, se=se, ci_low=did - Z95 * se, ci_high=did + Z95 * se,
-                        control_n=len(ctrl), control_pooled=pooled, treated_n=len(tr), control_growth=c_mean,
+                        control_n=len(ctrl), control_pooled=pooled, treated_n=len(tr), control_growth=c_eff,
                         shrink=shrink)
         for e in group:
             if not e.treated:
                 continue  # did not use it: no AI value, whatever their output did
-            lift_hat = (e.growth - c_mean) if e.growth is not None else did
+            lift_hat = ((1 + e.growth) / (1 + c_eff) - 1) if e.growth is not None else did
             e.lift = did + shrink * (lift_hat - did)
-            base = units_pre[e.employee_id] if e.employee_id in units_pre else units_win[e.employee_id] / (1 + did + c_mean)
+            base = units_pre[e.employee_id] if e.employee_id in units_pre else units_win[e.employee_id] / ((1 + did) * (1 + c_eff))
             scale = a.realization * base * e.hpu * e.rate  # type: ignore[attr-defined]
             e.value = max(0.0, e.lift * scale)
             e.value_low = max(0.0, (e.lift - Z95 * se) * scale)
@@ -152,14 +178,21 @@ def _analyze(ds: Dataset, a: Assumptions) -> tuple[list[Employee], dict]:
         elif e.roi >= 0.0:
             e.segment = "break-even"
         elif e.token_cost > 1.5 * peers(e):
-            e.segment = "overspender"
+            e.segment = "high-spend"
         else:
             e.segment = "low-return"
     out = (es, stats)
+    cache[("sel",) + key] = sel
     if len(cache) > 8:
         cache.clear()
     cache[key] = out
     return out
+
+
+def selection(ds: Dataset, a: Assumptions) -> dict:
+    """Result of the parallel-trends check: did adopters already grow faster before rollout?"""
+    _analyze(ds, a)
+    return ds.__dict__["_cache"][("sel",) + tuple(sorted(a.__dict__.items()))]
 
 
 def _cohort_counts(es: list[Employee], pred) -> dict[tuple, int]:
@@ -205,7 +238,7 @@ def _roll(es: list[Employee], a: Assumptions) -> dict:
         break_even_realization=round(a.realization * cost / value, 3) if value > 0 else None,
         cost_per_head=round(cost / len(es), 2) if es else 0.0,
         idle=len(idle), idle_waste=round(sum(e.seat_cost for e in idle), 2),
-        overspenders=sum(1 for e in es if e.segment == "overspender"),
+        high_spend=sum(1 for e in es if e.segment == "high-spend"),
     )
 
 
@@ -222,8 +255,9 @@ def summary(ds: Dataset, a: Assumptions) -> dict:
     naive = [s["naive_lift"] * s["treated_n"] for s in stats.values()]
     nt = sum(s["treated_n"] for s in stats.values()) or 1
     ctrl = sum(s["control_growth"] * s["treated_n"] for s in stats.values()) / nt
-    company = _roll(es, a) | dict(naive_lift=round(sum(naive) / nt, 4), control_growth=round(ctrl, 4),
-                                 did_lift=round(sum(naive) / nt - ctrl, 4))
+    n_avg = sum(naive) / nt
+    company = _roll(es, a) | dict(naive_lift=round(n_avg, 4), control_growth=round(ctrl, 4),
+                                 did_lift=round((1 + n_avg) / (1 + ctrl) - 1, 4), selection=selection(ds, a))
     order = ["intern", "junior", "mid", "senior"]
     return dict(
         assumptions=a.__dict__,
@@ -237,16 +271,12 @@ def summary(ds: Dataset, a: Assumptions) -> dict:
 
 
 def list_people(ds: Dataset, a: Assumptions, department: str | None = None, segment: str | None = None,
-                limit: int = 10, worst: bool = True, admin: bool = False) -> list[dict]:
-    """Named employees only in admin mode. Otherwise groups of at least `min_group` people."""
+                limit: int = 10, worst: bool = True) -> list[dict]:
+    """Groups of at least `min_group` people, by department and level. Individuals are never returned: the
+    unit of analysis is how seats and budgets are set up, not any one person's behaviour."""
     es = [e for e in employees(ds, a)
           if (department is None or e.department.lower() == department.lower())
           and (segment is None or e.segment == segment)]
-    if admin:
-        es.sort(key=lambda e: e.roi, reverse=not worst)
-        return [dict(employee_id=e.employee_id, department=e.department, level=e.level, segment=e.segment,
-                     monthly_cost=round(e.cost, 2), monthly_value=round(e.value, 2),
-                     roi=round(e.roi, 2), sessions=round(e.sessions, 1)) for e in es[:limit]]
     groups: dict[tuple, list[Employee]] = {}
     for e in es:
         groups.setdefault((e.department, e.level), []).append(e)
@@ -283,7 +313,7 @@ def _cap_for(e: Employee, caps: dict[tuple, float]) -> float:
 
 
 def waste(ds: Dataset, a: Assumptions) -> dict:
-    """Recoverable monthly spend: idle seats (after contract friction) plus overspend above peer norms."""
+    """Recoverable monthly spend: unused seats (after contract friction) plus high spend above peer norms."""
     es = employees(ds, a)
     caps = _caps(es, a, 0.75)
     per: dict[str, dict] = {}
@@ -292,7 +322,7 @@ def waste(ds: Dataset, a: Assumptions) -> dict:
         if e.segment == "idle":
             d["idle_seats"] += 1
             d["idle_cost"] += e.seat_cost * a.seat_savings_realized
-        elif e.segment == "overspender":
+        elif e.segment == "high-spend":
             d["over_people"] += 1
             d["over_cost"] += max(0.0, e.token_cost - _cap_for(e, caps))
     for d in per.values():
@@ -307,39 +337,44 @@ def waste(ds: Dataset, a: Assumptions) -> dict:
                 by_department=dict(sorted(per.items(), key=lambda kv: -kv[1]["total"])))
 
 
-def actions(ds: Dataset, a: Assumptions, admin: bool = False) -> list[dict]:
+def actions(ds: Dataset, a: Assumptions) -> list[dict]:
     """Proposed changes, one row per department and level, each with a reason. Approve before acting.
-    Groups under `min_group` people are merged per department unless admin mode names people."""
+    Groups under `min_group` people are merged per department; no row ever identifies a person."""
     es = employees(ds, a)
     caps = _caps(es, a, 0.75)
-    rows: list[dict] = []
     buckets: dict[tuple, list[Employee]] = {}
     for e in es:
-        if e.segment in ("idle", "overspender"):
+        if e.segment in ("idle", "high-spend"):
             buckets.setdefault((e.segment, e.department, e.level), []).append(e)
     merged: dict[tuple, list[Employee]] = {}
     for (seg, d, lv), g in buckets.items():
-        if admin or len(g) >= a.min_group:
+        if len(g) >= a.min_group:
             merged[(seg, d, lv)] = g
         else:
             merged.setdefault((seg, d, "all levels"), []).extend(g)
+    rows: list[dict] = []
+    leftovers: dict[str, list[Employee]] = {}
+    for (seg, d, lv), g in list(merged.items()):
+        if len(g) < a.min_group:
+            leftovers.setdefault(seg, []).extend(g)
+            del merged[(seg, d, lv)]
+    for seg, g in leftovers.items():
+        if len(g) >= a.min_group:
+            merged[(seg, "Several departments", "various")] = g  # small groups pooled so the total still adds up
     for (seg, d, lv), g in merged.items():
-        if not admin and len(g) < a.min_group:
-            continue  # still too small to show
         if seg == "idle":
             saving = sum(e.seat_cost for e in g) * a.seat_savings_realized
-            row = dict(kind="reclaim seats", department=d, level=lv, people=len(g),
+            row = dict(kind="reassign unused seats", department=d, level=lv, people=len(g),
                        monthly_saving=round(saving, 2),
-                       reason=f"Fewer than {a.idle_sessions:g} sessions a month in the last {a.window_months} months.")
+                       reason=f"Seats with fewer than {a.idle_sessions:g} sessions a month for {a.window_months} months. "
+                              "Ask the team first: the tool may not fit their work, or they may not know it exists.")
         else:
             saving = sum(max(0.0, e.token_cost - _cap_for(e, caps)) for e in g)
             cap = max((_cap_for(e, caps) for e in g), default=0.0)
-            row = dict(kind="cap token spend", department=d, level=lv, people=len(g),
+            row = dict(kind="review usage and set a team budget", department=d, level=lv, people=len(g),
                        monthly_saving=round(saving, 2),
-                       reason=f"Negative ROI and spend over 1.5x the median for {d} {lv} peers. "
-                              f"Suggested cap about ${cap:,.0f}/person/month.")
-        if admin:
-            row["employee_ids"] = sorted(e.employee_id for e in g)
+                       reason=f"High spend with no matching gain in output, above what {d} {lv} peers spend. "
+                              f"Start with training and workflow fit; a team budget near ${cap:,.0f} per person per month is the fallback.")
         rows.append(row)
     rows.sort(key=lambda r: -r["monthly_saving"])
     for i, r in enumerate(rows):
@@ -465,12 +500,14 @@ def simulate(ds: Dataset, a: Assumptions, p: Policy) -> dict:
                 bill_risk=round(worst / cost - 1, 3) if cost else 0.0)
 
 
-def standard_policies() -> list[Policy]:
+def standard_policies(a: Assumptions | None = None) -> list[Policy]:
+    a = a or Assumptions()
     return [
         Policy("Status quo", "Everyone keeps a seat; token spend is uncapped."),
         Policy("Fixed budget", "Flat $60 token cap for everyone, seats unchanged.", cap_mode="flat", flat_cap=60.0),
-        Policy("Pay per use", "No seats. Tokens bought at list price (1.6x the seat-plan rate), uncapped. "
-               "Assumes 5% less use because people see the meter.", seat_fee=0.0, price_multiplier=1.6, friction=0.05),
+        Policy("Pay per use", f"No seats. Tokens bought at list price ({a.ppu_multiplier:g}x the seat-plan rate), "
+               f"uncapped. Assumes {a.ppu_friction:.0%} less use because people see the meter.",
+               seat_fee=0.0, price_multiplier=a.ppu_multiplier, friction=a.ppu_friction),
         Policy("Variable by role", "Seats only for active users; token cap set per department and level from what "
                "ROI-positive peers actually spend; unused allowance pooled in the department.",
                reclaim_idle=True, cap_mode="role", pooled=True),
@@ -480,20 +517,42 @@ def standard_policies() -> list[Policy]:
 POLICY_ASSUMPTIONS = [
     "Value kept under a cap is (cap / usage)^elasticity. Elasticity is a slider, not a measurement.",
     "Reclaiming a seat saves only the 'seat savings realized' share: annual commits and notice periods mean some cost is still owed.",
-    "Pay per use assumes list tokens cost 1.6x the seat-plan rate and people ration use by 5% when metered.",
+    "Pay per use assumes list-price tokens cost a multiple of the seat-plan rate and that people ration metered use. Both are set in the assumptions, and the break-even price below shows how much the result depends on them.",
     "Bill risk = extra monthly cost if everyone spends at their own highest month in the window.",
-    "Idle people produce no AI value by definition; reclaiming their seat is assumed to cost no output.",
+    "Seats not in use produce no AI value by definition; reassigning them is assumed to cost no output.",
 ]
 
 
 def compare_policies(ds: Dataset, a: Assumptions) -> list[dict]:
-    rows = [simulate(ds, a, p) for p in standard_policies()]
+    rows = [simulate(ds, a, p) for p in standard_policies(a)]
     best_net = max(rows, key=lambda r: r["net"])["name"]
     safest = min(rows, key=lambda r: r["bill_risk"])["name"]
     for r in rows:  # computed here so the model never has to compare rows itself
         r["highest_net"] = r["name"] == best_net
         r["lowest_bill_risk"] = r["name"] == safest
     return rows
+
+
+def pay_per_use_breakeven(ds: Dataset, a: Assumptions) -> dict:
+    """List-price multiplier at which pay per use stops being the highest-net policy (bisection)."""
+    others = max(simulate(ds, a, p)["net"] for p in standard_policies(a) if p.name != "Pay per use")
+
+    def ppu_net(m: float) -> float:
+        from dataclasses import replace
+        pol = next(p for p in standard_policies(a) if p.name == "Pay per use")
+        return simulate(ds, a, replace(pol, price_multiplier=m))["net"]
+
+    lo, hi = 0.5, 12.0
+    if ppu_net(lo) < others:
+        return dict(multiplier=None, note="Pay per use is never the best policy at any price.", assumed=a.ppu_multiplier)
+    if ppu_net(hi) > others:
+        return dict(multiplier=None, note=f"Pay per use stays best even at {hi:g}x list price.", assumed=a.ppu_multiplier)
+    for _ in range(30):
+        mid = (lo + hi) / 2
+        lo, hi = (mid, hi) if ppu_net(mid) > others else (lo, mid)
+    m = round((lo + hi) / 2, 2)
+    return dict(multiplier=m, assumed=a.ppu_multiplier, still_best=a.ppu_multiplier < m,
+                note=f"Pay per use is the highest-net policy only while list price stays under {m}x the seat-plan rate.")
 
 
 def budget_recommendations(ds: Dataset, a: Assumptions) -> dict:
@@ -513,7 +572,7 @@ def budget_recommendations(ds: Dataset, a: Assumptions) -> dict:
                                            "users and cap spend until usage is tied to outcomes.")
         elif roll["roi"] < 0:
             verdict, reason = "review", ("ROI looks negative but the range includes zero, so the data cannot "
-                                         "confirm a loss. Reclaim idle seats and cap overspenders; do not "
+                                         "confirm a loss. Reassign unused seats and review high-spend usage with the teams; do not "
                                          "restrict everyone yet. Re-measure next quarter.")
         elif cv > 0.8:
             verdict, reason = "variable", (f"Spend varies widely between active people (CV {cv:.2f}), so a flat "
@@ -550,17 +609,17 @@ def validate(ds: Dataset, a: Assumptions) -> dict:
 
     ids = set(seg)
     idle = {i for i in ids if seg[i] == "idle"}
-    over = {i for i in ids if seg[i] == "overspender"}
-    never = {i for i in ids if ds.truth[i]["archetype"] in ("shelfware", "tourist")}
-    wasteful = {i for i in ids if ds.truth[i]["archetype"] == "wasteful"}
-    no_value = {i for i in ids if ds.truth[i]["archetype"] in ("wasteful", "tourist", "shelfware")}
-    flagged_no_value = {i for i in ids if seg[i] in ("idle", "overspender", "low-return")}
+    over = {i for i in ids if seg[i] == "high-spend"}
+    never = {i for i in ids if ds.truth[i]["archetype"] in ("unused", "light")}
+    heavy = {i for i in ids if ds.truth[i]["archetype"] == "heavy_no_gain"}
+    no_value = {i for i in ids if ds.truth[i]["archetype"] in ("heavy_no_gain", "light", "unused")}
+    flagged_no_value = {i for i in ids if seg[i] in ("idle", "high-spend", "low-return")}
     s = summary(ds, a)["company"]
     return dict(
-        idle_seats=pr(idle, {i for i in ids if ds.truth[i]["archetype"] == "shelfware"}) | {"vs": "shelfware"},
-        idle_vs_nonusers=pr(idle, never) | {"vs": "shelfware + tourists"},
-        overspenders=pr(over, wasteful) | {"vs": "wasteful"},
-        no_value=pr(flagged_no_value, no_value) | {"vs": "wasteful, tourist, shelfware"},
+        idle_seats=pr(idle, {i for i in ids if ds.truth[i]["archetype"] == "unused"}) | {"vs": "seats never used"},
+        idle_vs_nonusers=pr(idle, never) | {"vs": "never or barely used"},
+        high_spend=pr(over, heavy) | {"vs": "heavy use with no real gain"},
+        no_value=pr(flagged_no_value, no_value) | {"vs": "no real gain"},
         naive_vs_did=dict(naive_lift=s["naive_lift"], did_lift=s["did_lift"],
                           trend_removed=round(s["naive_lift"] - s["did_lift"], 4)),
         messy=dict(part_time=sum(1 for i in ids if ds.truth[i]["part_time"]),
