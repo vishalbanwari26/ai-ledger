@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import json
 import os
 import secrets
 import time
 from collections import OrderedDict, deque
-from dataclasses import replace
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
@@ -13,25 +11,20 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import analysis as an
-from . import data
-from . import bench
-from . import evidence as ev
-from . import rules
-from . import sources
+from . import service
 from .llm import Analyst
+from .service import MAX_UPLOAD, ServiceError  # noqa: F401  (MAX_UPLOAD is also read by the tests)
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
 MAX_SESSIONS = int(os.environ.get("LEDGER_MAX_SESSIONS", "200"))
 LLM_PER_HOUR = int(os.environ.get("LEDGER_LLM_PER_HOUR", "120"))  # global cap: a public demo spends real credits
-MAX_UPLOAD = 5_000_000
 app = FastAPI(title="AI Ledger")
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 # Each visitor gets their own dataset and assumptions, keyed by a cookie, so one person's CSV upload
 # or slider change never alters what another visitor sees. Oldest sessions are evicted past the cap.
 sessions: OrderedDict[str, Analyst] = OrderedDict()
-_default_ds = data.generate()
+_default_ds = service.default_dataset()
 _llm_calls: deque[float] = deque()
 
 
@@ -47,6 +40,14 @@ def get_state(request: Request, response: Response) -> Analyst:
     return sessions[sid]
 
 
+def _run(fn, *args, **kw):
+    """Call a service function; its refusals become the matching HTTP errors."""
+    try:
+        return fn(*args, **kw)
+    except ServiceError as e:
+        raise HTTPException(e.status, e.message)
+
+
 class Ask(BaseModel):
     question: str
 
@@ -58,14 +59,14 @@ class Params(BaseModel):
     ppu_multiplier: float = 1.6
 
 
-def _report(st: Analyst) -> dict:
-    a = st.assumptions
-    return dict(summary=an.summary(st.ds, a), policies=an.compare_policies(st.ds, a),
-                budgets=an.budget_recommendations(st.ds, a), waste=an.waste(st.ds, a), plan=an.plan_savings(st.ds, a), output_index=an.output_index(st.ds, a),
-                actions=an.actions(st.ds, a), routing=an.routing(st.ds, a), trend=an.trend(st.ds, a.drift_alert, a.drift_min_dollars),
-                validation=an.validate(st.ds, a), policy_assumptions=an.POLICY_ASSUMPTIONS, ppu_breakeven=an.pay_per_use_breakeven(st.ds, a),
-                value=an.value_info(st.ds, a),
-                unit_names={d: an.unit_label(st.ds, a, d) for d in sorted({r["department"] for r in st.ds.rows})}, rows=len(st.ds.rows))
+class ValueBody(BaseModel):
+    defs: dict = {}
+
+
+class RulesBody(BaseModel):
+    values: dict = {}
+    routine: dict | None = None
+    reset: bool = False
 
 
 @app.get("/")
@@ -80,106 +81,58 @@ def healthz():
 
 @app.get("/api/report")
 def report(request: Request, response: Response):
-    return _report(get_state(request, response))
+    return service.report(get_state(request, response))
 
 
 @app.get("/api/sources")
 def get_sources(request: Request, response: Response):
-    return sources.registry(get_state(request, response).assumptions)
+    return service.get_sources(get_state(request, response))
 
 
 @app.get("/api/evidence")
 def evidence(request: Request, response: Response):
-    st = get_state(request, response)
-    return bench.bundle(st.ds, st.assumptions)
+    return service.evidence(get_state(request, response))
 
 
 @app.get("/api/perception")
 def perception(request: Request, response: Response, pct: float):
-    st = get_state(request, response)
-    if not (-100 <= pct <= 500):
-        raise HTTPException(422, "percentage out of range")
-    return bench.perception(st.ds, st.assumptions, pct)
+    return _run(service.perception, get_state(request, response), pct)
 
 
 @app.get("/api/robustness")
 def robustness(request: Request, response: Response):
-    st = get_state(request, response)
-    return an.robustness(st.ds, st.assumptions)
-
-
-class ValueBody(BaseModel):
-    defs: dict = {}
+    return service.robustness(get_state(request, response))
 
 
 @app.get("/api/value")
 def get_value(request: Request, response: Response):
-    st = get_state(request, response)
-    return an.value_info(st.ds, st.assumptions)
+    return service.get_value(get_state(request, response))
 
 
 @app.post("/api/value")
 def set_value(body: ValueBody, request: Request, response: Response):
-    """Set how this session values AI output. An empty object goes back to hours x hourly rate from the data."""
-    st = get_state(request, response)
-    depts = sorted({r["department"] for r in st.ds.rows})
-    try:
-        clean = an.validate_value_defs(body.defs, depts, an.metrics_by_dept(st.ds))
-    except ValueError as e:
-        raise HTTPException(422, str(e))
-    st.assumptions = replace(st.assumptions, value_json=json.dumps(clean, sort_keys=True) if clean else "")
-    return _report(st)
-
-
-class RulesBody(BaseModel):
-    values: dict = {}
-    routine: dict | None = None
-    reset: bool = False
-
-
-def _depts(st: Analyst) -> list[str]:
-    return sorted({r["department"] for r in st.ds.rows})
+    return _run(service.set_value, get_state(request, response), body.defs)
 
 
 @app.get("/api/rules")
 def get_rules(request: Request, response: Response):
-    st = get_state(request, response)
-    return rules.info(st.assumptions, _depts(st))
+    return service.get_rules(get_state(request, response))
 
 
 @app.post("/api/rules")
 def set_rules(body: RulesBody, request: Request, response: Response):
-    """Change the tool's judgement calls for this session. Bad values are refused; risky ones come back as warnings."""
-    st = get_state(request, response)
-    d0 = an.Assumptions()
-    if body.reset:
-        st.assumptions = replace(st.assumptions, **{r["field"]: getattr(d0, r["field"]) for r in rules.RULES}, routine_json="")
-        return _report(st) | dict(rule_warnings=[])
-    months = len({r["month"] for r in st.ds.rows})
-    try:
-        changes, warnings = rules.validate(body.values, body.routine, st.assumptions, _depts(st), months)
-    except ValueError as e:
-        raise HTTPException(422, str(e))
-    st.assumptions = replace(st.assumptions, **changes)
-    return _report(st) | dict(rule_warnings=warnings)
+    return _run(service.set_rules, get_state(request, response), body.values, body.routine, body.reset)
 
 
 @app.get("/api/explain")
 def explain(request: Request, response: Response, department: str = ""):
-    st = get_state(request, response)
-    return dict(department=an.explain(st.ds, st.assumptions, department or None),
-                policies=an.explain_policies(st.ds, st.assumptions))
+    return service.explain(get_state(request, response), department)
 
 
 @app.post("/api/assumptions")
 def set_assumptions(p: Params, request: Request, response: Response):
-    st = get_state(request, response)
-    if not (0.05 <= p.realization <= 1 and 0.1 <= p.elasticity <= 1 and 0.0 <= p.cheap_price_per_m <= 5.0
-            and 0.5 <= p.ppu_multiplier <= 6.0):
-        raise HTTPException(422, "assumption out of range")
-    st.assumptions = replace(st.assumptions, realization=p.realization, elasticity=p.elasticity,
-                             cheap_price_per_m=p.cheap_price_per_m, ppu_multiplier=p.ppu_multiplier)  # keeps your value definition
-    return _report(st)
+    return _run(service.set_assumptions, get_state(request, response), p.realization, p.elasticity,
+                p.cheap_price_per_m, p.ppu_multiplier)
 
 
 @app.post("/api/upload")
@@ -189,40 +142,26 @@ async def upload(request: Request, response: Response, file: UploadFile = File(.
     if len(raw) > MAX_UPLOAD:
         raise HTTPException(413, "CSV larger than 5 MB")
     try:
-        st.ds = data.load_csv(raw.decode("utf-8-sig"))
-        st.assumptions = replace(st.assumptions, value_json="", routine_json="")  # keyed to the old departments: would mislead
-    except (ValueError, KeyError, UnicodeDecodeError) as e:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError as e:
         raise HTTPException(422, str(e))
-    return _report(st)
+    return _run(service.upload, st, text)
 
 
 @app.post("/api/reset")
 def reset(request: Request, response: Response):
-    st = get_state(request, response)
-    st.ds = _default_ds
-    st.assumptions = an.Assumptions()
-    return _report(st)
+    return service.reset(get_state(request, response))
 
 
 @app.get("/api/actions.csv")
 def actions_csv(request: Request, response: Response, ids: str = ""):
-    """Download the approved actions. `ids` is a comma list of action ids the user ticked."""
-    st = get_state(request, response)
-    want = {int(x) for x in ids.split(",") if x.strip().isdigit()}
-    rows = [r for r in an.actions(st.ds, st.assumptions) if not want or r["id"] in want]
-    import csv, io
-    buf = io.StringIO()
-    w = csv.writer(buf)
-    w.writerow(["action", "department", "level", "people", "monthly_saving", "reason"])
-    for r in rows:
-        w.writerow([r["kind"], r["department"], r["level"], r["people"], r["monthly_saving"], r["reason"]])
-    return PlainTextResponse(buf.getvalue(), media_type="text/csv",
+    return PlainTextResponse(service.actions_csv(get_state(request, response), ids), media_type="text/csv",
                              headers={"Content-Disposition": "attachment; filename=ai-ledger-actions.csv"})
 
 
 @app.get("/api/sample.csv")
 def sample():
-    return PlainTextResponse(_default_ds.to_csv(), media_type="text/csv",
+    return PlainTextResponse(service.sample_csv(), media_type="text/csv",
                              headers={"Content-Disposition": "attachment; filename=ai-ledger-sample.csv"})
 
 

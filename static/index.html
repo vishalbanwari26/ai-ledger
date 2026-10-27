@@ -402,7 +402,7 @@ function showTab(t){document.querySelectorAll('.tab').forEach(e=>e.hidden=e.id!=
   if(window.renderCharts)window.renderCharts()}
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
 showTab((location.hash||'#overview').slice(1).replace(/[^a-z]/g,'')||'overview');
-async function j(url,opt){const r=await fetch(url,opt);const b=await r.json().catch(()=>({}));
+async function j(url,opt){if(window.AIL_HOOK)return window.AIL_HOOK(url,opt);const r=await fetch(url,opt);const b=await r.json().catch(()=>({}));
   if(!r.ok)throw new Error(b.detail||r.statusText);return b}
 function render(r){R=r;setTimeout(()=>{renderOverview();renderGlossary();renderValue(r);window.renderCharts&&window.renderCharts(r)},0);const c=r.summary.company;
   const w=r.waste;$('wtot').textContent=usd(w.total_monthly);
@@ -453,7 +453,7 @@ function render(r){R=r;setTimeout(()=>{renderOverview();renderGlossary();renderV
 function sumActs(){const ks=[...document.querySelectorAll('.ak:checked')];const s=ks.reduce((a,k)=>a+ +k.dataset.s,0);
   $('actsum').textContent=ks.length?`${ks.length} approved: ${usd(s)}/mo, ${usd(s*12)}/yr`:'Nothing approved yet'}
 function dl(){const ids=[...document.querySelectorAll('.ak:checked')].map(k=>k.dataset.id).join(',');
-  if(!ids){$('uerr').textContent='Tick at least one action first.';return}$('uerr').textContent='';location.href='/api/actions.csv?ids='+ids}
+  if(!ids){$('uerr').textContent='Tick at least one action first.';return}$('uerr').textContent='';if(window.AIL_DOWNLOAD){window.AIL_DOWNLOAD('/api/actions.csv?ids='+ids);return}location.href='/api/actions.csv?ids='+ids}
 async function load(){render(await j('/api/report'));loadRob();loadMath(mdept);loadEvidence();loadRules()}
 
 const pp1=n=>(n*100).toFixed(1)+'%';

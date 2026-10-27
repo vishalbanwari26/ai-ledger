@@ -204,8 +204,8 @@ def test_language_never_blames_people():
     banned = ("lazy", "wasteful", "offender", "abuser", "overspender", "worst performer", "slacker")
     root = pathlib.Path(__file__).resolve().parent.parent
     for path in [*root.glob("ailedger/*.py"), root / "static/index.html", root / "static/charts.js", root / "README.md"]:
-        if path.name == "llm.py":
-            continue  # holds the ban list and prompt rules by necessity; the detector has its own tests
+        if path.name in ("llm.py", "agent.py"):
+            continue  # agent.py holds the ban list and prompt rules by necessity; the detector has its own tests
         text = path.read_text().lower()
         for w in banned:
             assert w not in text, f"{w} in {path.name}"
