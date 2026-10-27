@@ -6,6 +6,16 @@ AI Ledger joins per-employee AI cost (seats, tokens) with outcome data (PRs merg
 estimates the real effect of AI with a control group, finds recoverable waste, simulates budget policies on your own
 data, and lets you question the results in plain English. Answers come from NVIDIA Nemotron on Nebius Token Factory.
 
+## How it uses NVIDIA Nemotron and Nebius
+
+- **Nebius Token Factory** serves both models through its OpenAI-compatible API (`https://api.tokenfactory.nebius.com/v1/`), so the
+  standard `openai` client is all the app needs. Model IDs are discovered at runtime from the Token Factory model list.
+- **NVIDIA Nemotron 3 Ultra (550B)** answers questions as a tool-calling agent. It calls eleven tools backed by the app's own maths
+  and never sees raw rows. A tool-calling answer took about 5 seconds in a test on 27 October 2026.
+- **NVIDIA Nemotron 3.5 Lightning** writes the plain-English summary, the cheaper tier for a routine task (about 8 seconds).
+- **Nebius Serverless Endpoints** host the app itself (a CPU container); see the deploy section.
+- **Track:** Best Apps and Agents.
+
 ## What it does
 
 - **Finds waste:** unused seats and above-norm spend on high-spend seats, with the share of a seat you can actually cancel after contract friction.
@@ -58,10 +68,18 @@ discovered from the Token Factory model list, or set with `NEBIUS_MODEL_REASON` 
 
 ## Run
 
+Needs Python 3.11 or newer (tested on 3.13).
+
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 export NEBIUS_API_KEY=...        # Nebius Token Factory key
 .venv/bin/uvicorn ailedger.app:app --port 8077
+```
+
+If `python3 -m venv` fails on your machine (some Homebrew Python 3.14 builds do), use [uv](https://docs.astral.sh/uv/) instead:
+
+```bash
+uv venv --python 3.13 .venv && uv pip install --python .venv/bin/python -r requirements.txt
 ```
 
 Open http://localhost:8077. The dashboard works without a key; the brief and Q&A need it.
@@ -83,6 +101,9 @@ baseline. Join vendor billing (cost, tokens, sessions) with your work systems (o
 Download the sample CSV from the UI to see the exact shape.
 
 ## Deploy on Nebius Serverless Endpoints
+
+The quickest path is the guided script, which also covers the manual steps (CLI login, a demo-only key, making the image public,
+checking the live app, the video and the form): `./deploy/wizard.sh`. The commands it runs are below.
 
 The app is a CPU container; the models run on Token Factory, so no GPU is needed.
 
