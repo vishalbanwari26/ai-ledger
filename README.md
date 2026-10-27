@@ -18,6 +18,22 @@ data, and lets you question the results in plain English. Answers come from NVID
   Nebius Serverless Endpoint (see the deploy section), but the hosted demo does not use one.
 - **Track:** Best Apps and Agents.
 
+## Where Token Factory sped things up
+
+- **One client for two model tiers.** Both Nemotron models sit behind the same OpenAI-compatible endpoint, so switching tiers is a
+  model-name change. No second SDK or auth flow.
+- **Model discovery.** The app reads the model list at start-up and picks the largest and smallest Nemotron by name, so the code
+  does not hard-code model IDs that could change.
+- **Browser calls.** Token Factory accepts requests from the browser, which is what makes the no-server demo possible. A visitor's
+  own key stays in their browser and is sent only to Token Factory.
+- **Fast iteration.** Tool calling worked on the first schema; a tool-calling answer took about 5 seconds and a summary about 8.
+
+## Other Nebius services
+
+- **Nebius CLI** (`nebius ai endpoint create`) is used by `deploy/deploy.sh` and `deploy/wizard.sh` to create a Serverless Endpoint
+  for the server build. This path is written and reviewed but was not run end to end for the hosted demo, which runs as a static
+  site.
+
 ## Try it
 
 **https://vishalbanwari.tech/ai-ledger/** runs the whole app in your browser, with no server. The analysis (sliders, value
