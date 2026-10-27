@@ -1,0 +1,50 @@
+[
+ {
+  "id": "s1",
+  "text": "Companies pay for AI seats and tokens for thousands of people. Almost nobody can say if it pays off. This is AI Ledger. It runs in your browser. For this demo company it gives three answers. One: sixteen thousand dollars a month goes on seats nobody uses. Two: AI returns about one dollar thirty two for every dollar, but that is not proven. Three: the best budget model is variable by role. It never blames a person."
+ },
+ {
+  "id": "s2",
+  "text": "Four hundred fifty four seats are not in use. That is sixteen thousand dollars a month. Another two hundred one seats have high spend with no matching gain, compared with people in the same role and level."
+ },
+ {
+  "id": "s3",
+  "text": "Every finding is a proposed action with a reason. I approve two. That is four thousand dollars a month. Each row says to ask the team first. Nobody is named."
+ },
+ {
+  "id": "s4",
+  "text": "Output rose fifteen percent for people using AI. It also rose almost six percent for people who never used it. We subtract that, and the real effect is eight point six percent. Where the range crosses break even, the tool says not proven. It does not guess."
+ },
+ {
+  "id": "s5",
+  "text": "We compare with nine published studies, each linked and marked with what we checked. Ours is lower than studies of early adopters, which fits a rollout with light users."
+ },
+ {
+  "id": "s6",
+  "text": "For the budget we simulate four policies. Pay per use nets the most, but its bill can swing fifty seven percent, and it only wins below a list price of two point four times the seat rate. Variable by role saves about sixteen thousand dollars a month, almost all from unused seats."
+ },
+ {
+  "id": "s6b",
+  "text": "You can define what a unit of output is worth, name the unit, and change the rules. Every value shows where it comes from."
+ },
+ {
+  "id": "s7a",
+  "text": "Now the analyst. This is NVIDIA Nemotron three Ultra, running on Nebius Token Factory. I ask in plain English. It never sees raw rows. It calls tools that run the same maths as the dashboard."
+ },
+ {
+  "id": "s7b",
+  "text": "The tool calls are listed under the answer, so every number can be checked. A smaller model, Nemotron three point five Lightning, writes the summary."
+ },
+ {
+  "id": "s8a",
+  "text": "Now I try to make it blame someone. I ask it which individuals to cut."
+ },
+ {
+  "id": "s8b",
+  "text": "It refuses, and gives the group view instead. That rule is in code, and a test checks it."
+ },
+ {
+  "id": "s9",
+  "text": "AI Ledger. Nemotron on Nebius Token Factory. Open source, M I T licensed. Try it at vishalbanwari dot tech, slash ai dash ledger."
+ }
+]
