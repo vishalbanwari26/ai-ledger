@@ -34,7 +34,7 @@ AI Ledger audits what a company spends on AI. It joins cost (seats, tokens) with
 
 You can define what a unit of output is worth, name the unit, count several metrics towards output, measure speed (time to
 finish a task) instead of volume, and change the tool's rules of thumb. Every value has a source or is labelled an assumption.
-A Nemotron analyst answers questions in plain English, and every answer lists the tool calls behind it.
+A Nemotron analyst answers questions in plain English, and every answer lists the tool calls behind it. The whole app runs in the browser, with no server.
 
 ## How we built it
 - **NVIDIA Nemotron 3 Ultra (550B) on Nebius Token Factory** is the analyst. It is a tool-calling agent with eleven tools
@@ -44,12 +44,19 @@ A Nemotron analyst answers questions in plain English, and every answer lists th
   tool applies the same advice to its users: route routine work to a cheaper model.
 - **Nebius Token Factory** serves both models through its OpenAI-compatible API, so the standard `openai` client is all the
   app needs. The app lists the models at start-up and picks the largest and smallest Nemotron by name.
-- **Nebius Serverless Endpoints** host the app as a CPU container. [Add one line on how the deploy went.]
-- Python and FastAPI for the app, plain SVG for the charts, no front-end framework.
+- **No server.** The demo is a static site on GitHub Pages. The analysis is plain Python, compiled to WebAssembly (Pyodide) and run
+  in a Web Worker in the browser. Live questions call Token Factory directly from the page with the visitor's own key, which
+  stays in their browser. Without a key, visitors read real answers recorded from Nemotron 3 Ultra, clearly labelled.
+  A server build (FastAPI) is included and runs the same code; it can be deployed to a Nebius Serverless Endpoint with
+  `deploy/wizard.sh`, but the hosted demo does not use one.
+- Python (shared between a FastAPI server and the browser), Pyodide, plain SVG for the charts, no front-end framework.
 
 In a test on 27 October, a tool-calling answer from Ultra took about 5 seconds, and the summary from Lightning took about 8.
 
 ## Challenges
+- **A Python app with no server.** The analysis is about 3,000 lines of pure Python. We split the server code from the logic, then ran the
+  logic in the browser with Pyodide in a Web Worker, so the page never freezes. A test checks that the browser engine gives exactly the
+  same answers as the server, route by route, and that it imports with no server libraries.
 - **Separating AI from the busy season.** A first version subtracted the control group additively. A stress test on companies
   with a known true effect showed it overstated the effect by 29% when the whole company was growing fast. We changed it to a
   ratio, added a pre-rollout check, and re-ran the tests: bias is now near zero and 94% to 100% of true values sit inside the
@@ -76,11 +83,11 @@ Your own budget policies. Adapters for real vendor usage exports. The demo compa
 before it can be trusted on a real company.
 
 ## Built with
-Python, FastAPI, NVIDIA Nemotron 3 Ultra, NVIDIA Nemotron 3.5 Lightning, Nebius Token Factory, Nebius Serverless Endpoints, Docker
+Python, Pyodide (WebAssembly), FastAPI, NVIDIA Nemotron 3 Ultra, NVIDIA Nemotron 3.5 Lightning, Nebius Token Factory, GitHub Pages
 
 ## Links
 - Code: https://github.com/vishalbanwari26/ai-ledger (MIT licence)
-- Demo: [paste the endpoint URL]
+- Demo: https://vishalbanwari.tech/ai-ledger/ (the Ask tab needs your own Token Factory key for live answers; recorded real answers are shown without one)
 - Video: [paste the YouTube link]
 
 ## Did the project exist before the submission period?
@@ -105,8 +112,9 @@ Draft from what we observed while building. Delete anything you did not see your
 - When the prompt was loose, Nemotron 3 Ultra once called a tool that was not in the schema and then reported numbers that
   were not in any tool result. Stricter tool-name enforcement on the server side, or a flag to reject unknown tool calls,
   would help agent builders.
-- [Add: how the Serverless Endpoint deploy went. Was the CPU preset name easy to find? Did `--env` work? How long did the first
-  start take? Did the endpoint URL work first time?]
+- Token Factory allows browser calls (CORS `*`, with the authorization header), which is what let us build a no-server demo where the
+  visitor's own key never leaves their browser. Please keep that. A short doc note saying browser calls are supported would help.
+- We did not deploy to a Serverless Endpoint for the demo, so we have no feedback on it. [Add if you try `deploy/wizard.sh`.]
 - [Add anything else you hit: rate limits, error messages, docs gaps.]
 
 ## Teammates

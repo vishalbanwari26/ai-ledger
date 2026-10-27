@@ -1,5 +1,8 @@
 # Final checklist: deploy and submit
 
+**Done:** the demo is live at https://vishalbanwari.tech/ai-ledger/ (static site on GitHub Pages, no server). To change it: edit,
+run the tests, then `./tools/publish_site.sh`. Sections A to E below are for the optional server build on a Nebius Serverless Endpoint.
+
 Nothing here has been run against a real Nebius account yet. Items marked CHECK are the ones most likely to need a tweak.
 
 ## A. Before deploying (5 minutes, all on your laptop)

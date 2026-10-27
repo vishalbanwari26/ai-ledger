@@ -13,8 +13,19 @@ data, and lets you question the results in plain English. Answers come from NVID
 - **NVIDIA Nemotron 3 Ultra (550B)** answers questions as a tool-calling agent. It calls eleven tools backed by the app's own maths
   and never sees raw rows. A tool-calling answer took about 5 seconds in a test on 27 October 2026.
 - **NVIDIA Nemotron 3.5 Lightning** writes the plain-English summary, the cheaper tier for a routine task (about 8 seconds).
-- **Nebius Serverless Endpoints** host the app itself (a CPU container); see the deploy section.
+- **Hosting:** the demo is a static site on GitHub Pages. The analysis runs in your browser (Python compiled to WebAssembly), and
+  live questions call Token Factory straight from the page with your own key. A server build is also included and can run on a
+  Nebius Serverless Endpoint (see the deploy section), but the hosted demo does not use one.
 - **Track:** Best Apps and Agents.
+
+## Try it
+
+**https://vishalbanwari.tech/ai-ledger/** runs the whole app in your browser, with no server. The analysis (sliders, value
+definition, rules, CSV upload) works straight away. To ask the Nemotron analyst anything, open the Ask tab and paste your own Nebius
+Token Factory key: it is stored only in your browser and sent only to `api.tokenfactory.nebius.com`. Without a key you can read
+real answers recorded from Nemotron 3 Ultra, clearly labelled.
+
+To rebuild and publish the static site: `./tools/publish_site.sh`. To record fresh answers: `NEBIUS_API_KEY=... python tools/record_answers.py`.
 
 ## What it does
 

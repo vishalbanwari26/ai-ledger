@@ -65,7 +65,7 @@ bill risk. It saves about $16,000, almost all from unused seats. The caps are a 
 That rule is in code, and a test checks it."
 
 ## Close (2:55)
-"Nebius Serverless Endpoint. Models on Token Factory. Upload your own CSV. MIT licensed on GitHub."
+"It runs in your browser with no server. Nemotron runs on Nebius Token Factory. Upload your own CSV. MIT licensed on GitHub."
 
 ## If you run over 3:00, cut in this order
 1. The "isn't this subjective" beat (18 seconds).
