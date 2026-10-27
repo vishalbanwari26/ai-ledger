@@ -28,7 +28,7 @@ button,.btn{background:var(--bar);color:#fff;border:0;border-radius:6px;padding:
 button.ghost,.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
 button:disabled{opacity:.5}
 textarea{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:10px;font:inherit;resize:vertical}
-.ans{white-space:pre-wrap;margin-top:12px}.err{color:var(--bad);margin-top:8px}
+.ans{white-space:pre-wrap;margin-top:12px}.ans.md{white-space:normal}.md p{margin:6px 0}.md ul,.md ol{margin:6px 0;padding-left:22px}.md li{margin:2px 0}.md table{border-collapse:collapse;margin:8px 0;font-size:13px}.md th,.md td{border:1px solid var(--line);padding:4px 8px;text-align:left}.md th{color:var(--mute);font-weight:500}.md .mdh{font-weight:700;margin:10px 0 4px}.md code{background:var(--bg);padding:1px 4px;border-radius:4px}.md hr{border:0;border-top:1px solid var(--line);margin:10px 0}.err{color:var(--bad);margin-top:8px}
 details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;border-radius:6px;overflow:auto;max-height:260px;font-size:12px}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.chip{cursor:pointer}
 .scroll{overflow-x:auto}.best td{color:var(--good)}
@@ -248,6 +248,24 @@ let R;
 
 
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function md(text){  /* a small, safe markdown renderer: everything is escaped first, then only these tags are added */
+  const lines=esc(text).split('\n');let out='',list=null,tbl=[];
+  const inl=s=>s.replace(/\*\*([^*\n]+)\*\*/g,'<b>$1</b>').replace(/`([^`\n]+)`/g,'<code>$1</code>');
+  const closeList=()=>{if(list){out+='</'+list+'>';list=null}};
+  const cells=r=>r.trim().replace(/^\||\|$/g,'').split('|').map(c=>c.trim());
+  const flushTbl=()=>{if(!tbl.length)return;const sep=tbl.length>1&&/^[\s|:-]+$/.test(tbl[1]);const head=sep?cells(tbl[0]):null;const body=(sep?tbl.slice(2):tbl).map(cells);
+    out+='<table class="mdt">'+(head?'<tr>'+head.map(c=>'<th>'+inl(c)+'</th>').join('')+'</tr>':'')+body.map(r=>'<tr>'+r.map(c=>'<td>'+inl(c)+'</td>').join('')+'</tr>').join('')+'</table>';tbl=[]};
+  for(const raw of lines){const l=raw.trimEnd();let m;
+    if(/^\s*\|.*\|\s*$/.test(l)){closeList();tbl.push(l);continue}
+    flushTbl();
+    if(!l.trim()){closeList();continue}
+    if(/^\s*-{3,}\s*$/.test(l)){closeList();out+='<hr>';continue}
+    if((m=l.match(/^\s*#{1,4}\s+(.*)$/))){closeList();out+='<div class="mdh">'+inl(m[1])+'</div>';continue}
+    if((m=l.match(/^\s*[-*\u2022]\s+(.*)$/))){if(list!=='ul'){closeList();out+='<ul>';list='ul'}out+='<li>'+inl(m[1])+'</li>';continue}
+    if((m=l.match(/^\s*\d+[.)]\s+(.*)$/))){if(list!=='ol'){closeList();out+='<ol>';list='ol'}out+='<li>'+inl(m[1])+'</li>';continue}
+    closeList();out+='<p>'+inl(l)+'</p>'}
+  closeList();flushTbl();return out}
+/*md-end*/
 const refName=id=>{const e=SRC&&SRC.entries.find(x=>x.id===id);return e?e.label:id};
 const RF=id=>`<sup class="ref" data-ref="${id}" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup>`;
 let SRC=null,SRCFILTER='all';
@@ -591,11 +609,11 @@ $('file').onchange=async e=>{$('uerr').textContent='';const f=new FormData();f.a
   try{render(await j('/api/upload',{method:'POST',body:f}));loadRob();loadMath(mdept);loadEvidence();loadRules();$('src').textContent=e.target.files[0].name}catch(err){$('uerr').textContent=err.message}};
 async function reset(){$('uerr').textContent='';render(await j('/api/reset',{method:'POST'}));loadRob();loadMath(mdept);loadEvidence();loadRules();$('src').textContent='synthetic company';real.value=50;elas.value=50;cheap.value=60;ppu.value=160;$('rv').textContent='50%';$('ev').textContent='0.5';$('cv').textContent='0.60';$('pv').textContent='1.6x'}
 async function brief(){$('bb').disabled=true;$('brief').textContent='Thinking…';
-  try{const b=await j('/api/brief');$('brief').textContent=b.brief+'\n\nmodel: '+b.model}catch(e){$('brief').innerHTML='<span class=err></span>';$('brief').firstChild.textContent=e.message}
+  try{const b=await j('/api/brief');$('brief').className='ans md';$('brief').innerHTML=md(b.brief)+'<p class="mute">model: '+esc(b.model)+'</p>'}catch(e){$('brief').innerHTML='<span class=err></span>';$('brief').firstChild.textContent=e.message}
   $('bb').disabled=false}
 async function ask(){if(!q.value.trim())return;$('ab').disabled=true;$('ans').textContent='Thinking…';$('aerr').textContent='';$('evpre').textContent='';
   try{const a=await j('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q.value})});
-   $('ans').textContent=a.answer+'\n\nmodel: '+a.model;$('evpre').textContent=JSON.stringify(a.evidence,null,1)}
+   $('ans').className='ans md';$('ans').innerHTML=md(a.answer)+'<p class="mute">model: '+esc(a.model)+'</p>';$('evpre').textContent=JSON.stringify(a.evidence,null,1)}
   catch(e){$('ans').textContent='';$('aerr').textContent=e.message}
   $('ab').disabled=false}
 load();

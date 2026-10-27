@@ -124,3 +124,29 @@ def test_nothing_secret_ships_in_the_bundle(tmp_path):
     js = (out / "static-mode.js").read_text()
     assert "api.tokenfactory.nebius.com" in js and "localStorage" in js
     assert re.search(r"pyodide/v\d+\.\d+\.\d+/full", (out / "pyworker.js").read_text())        # an exact, pinned version
+
+
+def test_answers_are_rendered_as_safe_markdown():
+    """Runs the page's real md() in Node: model output must never be able to inject HTML, and common markdown must render."""
+    import shutil
+    import pytest
+    if not shutil.which("node"):
+        pytest.skip("node is not installed")
+    page = (ROOT / "static/index.html").read_text()
+    esc = re.search(r"const esc=.*?;\n", page).group(0)
+    fn = page[page.index("function md(text)"):page.index("/*md-end*/")]
+    script = esc + fn + r"""
+const out = {
+  xss: md('<img src=x onerror=alert(1)> and <script>alert(2)</script> "quoted"'),
+  bold: md('**Sales** has $4,224'),
+  list: md('- one\n- two\n\n1. first\n2. second'),
+  table: md('| A | B |\n|---|---|\n| **x** | y |'),
+  head: md('### Title\n---\ntext'),
+};
+console.log(JSON.stringify(out));"""
+    got = json.loads(subprocess.run(["node", "-e", script], capture_output=True, text=True, check=True).stdout)
+    assert "<img" not in got["xss"] and "<script" not in got["xss"] and "&lt;script&gt;" in got["xss"]
+    assert got["bold"] == "<p><b>Sales</b> has $4,224</p>"
+    assert got["list"] == "<ul><li>one</li><li>two</li></ul><ol><li>first</li><li>second</li></ol>"
+    assert got["table"] == '<table class="mdt"><tr><th>A</th><th>B</th></tr><tr><td><b>x</b></td><td>y</td></tr></table>'
+    assert got["head"] == '<div class="mdh">Title</div><hr><p>text</p>'
