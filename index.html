@@ -1,0 +1,624 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Ledger</title>
+<style>
+:root{--bg:#0e1116;--panel:#161b22;--line:#252c36;--text:#e6e9ee;--mute:#8b95a5;--accent:#6ea8fe;
+--good:#4ade80;--warn:#fbbf24;--bad:#f87171;--bar:#2f6fd6}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:22px;margin:0}h2{font-size:15px;margin:0 0 12px}
+.sub{color:var(--mute);margin:4px 0 20px}.note{color:var(--mute);font-size:12px;margin:10px 0 0}
+.grid{display:grid;gap:12px}.kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.two{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:12px}
+.kpi b{display:block;font-size:22px;font-variant-numeric:tabular-nums}.kpi span{color:var(--mute);font-size:12px}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--mute);font-weight:500;font-size:12px}
+td.n,th.n{text-align:right}
+.roi{display:flex;align-items:center;gap:8px;min-width:150px}.roi i{display:block;height:8px;border-radius:4px;background:var(--bar)}
+.pill{padding:2px 8px;border-radius:99px;font-size:12px;border:1px solid var(--line);white-space:nowrap}
+.fixed{color:var(--accent)}.variable{color:var(--good)}.restrict{color:var(--bad)}.review{color:var(--warn)}.uncertain{color:var(--warn)}.clear{color:var(--good)}
+.row{display:flex;gap:16px;flex-wrap:wrap;align-items:end}
+label{display:block;color:var(--mute);font-size:12px}input[type=range]{width:160px}
+button,.btn{background:var(--bar);color:#fff;border:0;border-radius:6px;padding:8px 14px;cursor:pointer;font:inherit;text-decoration:none;display:inline-block}
+button.ghost,.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
+button:disabled{opacity:.5}
+textarea{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:10px;font:inherit;resize:vertical}
+.ans{white-space:pre-wrap;margin-top:12px}.ans.md{white-space:normal}.md p{margin:6px 0}.md ul,.md ol{margin:6px 0;padding-left:22px}.md li{margin:2px 0}.md table{border-collapse:collapse;margin:8px 0;font-size:13px}.md th,.md td{border:1px solid var(--line);padding:4px 8px;text-align:left}.md th{color:var(--mute);font-weight:500}.md .mdh{font-weight:700;margin:10px 0 4px}.md code{background:var(--bg);padding:1px 4px;border-radius:4px}.md hr{border:0;border-top:1px solid var(--line);margin:10px 0}.err{color:var(--bad);margin-top:8px}
+details{margin-top:10px;color:var(--mute)}pre{background:var(--bg);padding:10px;border-radius:6px;overflow:auto;max-height:260px;font-size:12px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.chip{cursor:pointer}
+.scroll{overflow-x:auto}.best td{color:var(--good)}
+.hero{border-color:#7f1d1d;background:linear-gradient(180deg,#1c1214,var(--panel))}.hero .lab{color:var(--mute);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+.big b{font-size:44px;color:var(--bad);font-variant-numeric:tabular-nums}.big span{color:var(--mute)}
+.sec{margin:24px 0 10px;font-size:13px;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}
+.cmp{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}.cmp b{font-size:26px;font-variant-numeric:tabular-nums}
+.step{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px}.step b{display:block;margin-bottom:2px}
+.fm{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--accent);margin:2px 0}.res{margin-top:4px;font-variant-numeric:tabular-nums}
+.tabs{display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid var(--line);margin:0 0 14px;padding-bottom:0}
+.tabs button{background:transparent;color:var(--mute);border:0;border-bottom:2px solid transparent;border-radius:0;padding:10px 12px;white-space:nowrap}
+.tabs button.on{color:var(--text);border-bottom-color:var(--accent)}.tab[hidden]{display:none}
+.three{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}.tile{margin:0}.tile .lab{color:var(--mute);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
+.big1{display:block;font-size:30px;line-height:1.15;margin:8px 0 6px;font-variant-numeric:tabular-nums}.red{color:var(--bad)}.tile p{margin:0;color:var(--mute)}
+.todo{margin:0;padding-left:20px}.todo li{margin:6px 0}
+.tiles{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.dt{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px}.dt b{display:block;font-size:20px;font-variant-numeric:tabular-nums}
+.dt.c{border-left:3px solid var(--good)}.dt.u{border-left:3px solid var(--warn)}.dt.n{border-left:3px solid var(--bad)}
+.gg{margin:18px 0 8px;font-size:13px;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}
+.gl{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}.gt{margin:0}.gt h3{margin:0 0 4px;font-size:15px}.gt p{margin:0 0 8px;color:var(--text)}
+.ex{background:var(--bg);border-left:3px solid var(--accent);border-radius:4px;padding:8px 10px;color:var(--mute);font-size:13px}.ex b{color:var(--text)}
+.legend{display:flex;gap:6px 18px;flex-wrap:wrap;margin-top:8px;color:var(--mute);font-size:12px}.legend span{display:inline-flex;align-items:center}
+.lk{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px}
+.tbtn{margin-top:10px;padding:4px 10px;font-size:12px}.chart svg text{font-family:inherit}.chart svg [tabindex]{outline:none}.chart svg [tabindex]:focus-visible{outline:1px solid var(--accent)}
+.ctip{position:fixed;z-index:30;pointer-events:none;background:#0e1116;border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-size:12px;max-width:260px;box-shadow:0 4px 14px rgba(0,0,0,.4)}
+.ctip[hidden]{display:none}.ctip-h{color:var(--mute);margin-bottom:4px}.ctip-r{margin:2px 0}.ctip-r b{color:var(--text);font-size:13px}.ctip-r span:not(.lk){color:var(--mute)}
+.vin{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit;max-width:150px}.vin.num{width:96px}.vin:disabled{opacity:.4}
+.ref{color:var(--accent);cursor:pointer;font-size:11px;margin-left:3px;user-select:none;vertical-align:super}.ref:focus-visible{outline:1px solid var(--accent);border-radius:3px}
+.refpop{position:fixed;z-index:40;background:#0e1116;border:1px solid var(--line);border-radius:8px;padding:12px 14px;max-width:340px;font-size:12px;box-shadow:0 6px 20px rgba(0,0,0,.5)}
+.refpop h4{margin:0 0 4px;font-size:13px}.refpop p{margin:4px 0;color:var(--mute)}.refpop b{color:var(--text)}.refpop a{color:var(--accent)}
+.kind{display:inline-block;padding:1px 8px;border-radius:99px;font-size:11px;border:1px solid var(--line);white-space:nowrap}
+.k-published{color:var(--good);border-color:#14532d}.k-list-price{color:var(--accent);border-color:#1e3a8a}.k-assumption{color:var(--warn);border-color:#713f12}.k-judgement{color:var(--warn);border-color:#713f12}.k-yours{color:var(--accent);border-color:#1e3a8a}.k-demo-data,.k-design,.k-convention,.k-data{color:var(--mute)}
+.srcref{margin:4px 0;font-size:12px;color:var(--mute)}.srcref a{color:var(--accent)}.stepref{margin-top:4px;font-size:11px;color:var(--mute)}
+.warn{color:var(--warn)}.mute{color:var(--mute)}
+</style>
+</head>
+<body>
+<main>
+  <h1>AI Ledger</h1>
+  <p class="sub">Is your AI spend paying off, and how should each team's budget work? Powered by NVIDIA Nemotron on Nebius Token Factory.</p>
+
+    <details class="card" id="settings"><summary style="cursor:pointer;color:var(--text)"><b>Data and assumptions</b> <span class="mute">(sliders change every number)</span> <span class="pill vflag" hidden style="color:var(--warn)">custom value definition</span> <span class="pill rflag" hidden style="color:var(--warn)">custom rules</span></summary><div style="margin-top:12px">
+    <div class="row">
+      <div><label>Data</label><span id="src" class="pill">synthetic company</span></div>
+      <input id="file" type="file" accept=".csv" hidden>
+      <button class="ghost" onclick="file.click()">Upload CSV</button>
+      <a class="btn ghost" href="/api/sample.csv">Sample CSV</a>
+      <button class="ghost" onclick="reset()">Reset</button>
+      <div style="flex:1"></div>
+      <div><label>Value realization: <b id="rv">50%</b><sup class="ref" data-ref="realization" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup></label><input id="real" type="range" min="10" max="100" value="50"></div>
+      <div><label>Throttle elasticity: <b id="ev">0.5</b><sup class="ref" data-ref="elasticity" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup></label><input id="elas" type="range" min="10" max="100" value="50"></div>
+      <div><label>Cheaper model $/1M tok: <b id="cv">0.60</b><sup class="ref" data-ref="cheap_token_price" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup></label><input id="cheap" type="range" min="10" max="300" value="60"></div>
+      <div><label>Pay-per-use list price: <b id="pv">1.6x</b><sup class="ref" data-ref="ppu_multiplier" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup></label><input id="ppu" type="range" min="50" max="600" value="160"></div>
+    </div>
+    <div id="uerr" class="err"></div>
+  </div></details>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="overview" class="on">Overview</button><button data-tab="waste">Waste and actions</button>
+    <button data-tab="budget">Budget policy</button><button data-tab="value">Your value</button><button data-tab="rules">Rules</button><button data-tab="real">Is the return real?</button>
+    <button data-tab="math">Show the math</button><button data-tab="ask">Ask</button><button data-tab="evidence">Evidence</button><button data-tab="sources">Sources</button><button data-tab="glossary">Glossary</button></nav>
+
+  <div class="tab" id="tab-overview">
+    <div class="grid three">
+      <div class="card tile"><span class="lab">1 · Money you can recover now</span><b class="big1 red" id="o1"></b><p id="o1s"></p></div>
+      <div class="card tile"><span class="lab">2 · Is AI paying off?</span><b class="big1" id="o2"></b><p id="o2s"></p></div>
+      <div class="card tile"><span class="lab">3 · Best budget model</span><b class="big1" id="o3"></b><p id="o3s"></p></div>
+    </div>
+    <div class="card"><h2>What to do first</h2><ol id="o4" class="todo"></ol></div>
+    <div class="card chart" id="c-forest"></div>
+    <div class="card"><h2>Plain-English summary</h2>
+      <button id="bb" onclick="brief()">Write it with Nemotron</button><div id="brief" class="ans"></div></div>
+  </div>
+  <div class="tab" id="tab-waste" hidden>
+  <div class="card chart" id="c-split"></div>
+    <div class="card hero"><span class="lab">Recoverable AI spend: solid plus potential</span>
+    <div class="big"><b id="wtot">$0</b><span> / month</span></div>
+    <div class="sub" id="wsub" style="margin:4px 0 0"></div></div>
+    <div class="card scroll"><h2>Where the waste is</h2><table id="waste"></table>
+    <p class="note">Unused = a seat with under 3 sessions a month <sup class="ref" data-ref="idle_sessions" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup>. An unused seat is usually a fit or awareness problem, not a people problem: ask the team before reassigning. Savings count only the share of a seat you can actually cancel (contract minimums and notice periods)<sup class="ref" data-ref="seat_savings_realized" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup>.
+    High-spend = token spend above the 75th percentile of ROI-positive peers in the same department and level<sup class="ref" data-ref="high_spend" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup>, on seats whose ROI is negative. Start with training and workflow fit; this is about how tools are set up, not about anyone's effort.</p></div>
+    <div class="card scroll"><h2>Proposed actions: approve what you want</h2><table id="acts"></table>
+    <div class="row" style="margin-top:12px"><div id="actsum" class="mute"></div><div style="flex:1"></div>
+      <button class="ghost" onclick="dl()">Download approved as CSV</button></div>
+    <p class="note" id="privnote"></p></div>
+    <h2 class="sec">Watch it over time</h2>
+  <div class="card scroll"><h2>Monthly AI spend and drift alerts</h2><div id="alerts"></div><table id="trend"></table></div>
+  </div>
+  <div class="tab" id="tab-budget" hidden>
+  <div class="card chart" id="c-trade"></div>
+    <div class="card scroll"><h2>Policies, simulated on this data</h2><table id="pols"></table>
+    <p class="note" id="polnote"></p>
+    <p class="note">Assumptions behind these figures: pay-per-use list price<sup class="ref" data-ref="ppu_multiplier" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup>, rationing<sup class="ref" data-ref="ppu_friction" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup>, elasticity<sup class="ref" data-ref="elasticity" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup>, seat savings<sup class="ref" data-ref="seat_savings_realized" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup>, fixed cap<sup class="ref" data-ref="fixed_cap" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup>, learning floor<sup class="ref" data-ref="learning_floor" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup>.</p>
+    <details><summary>What each policy assumes</summary><ul id="passm"></ul></details></div>
+    <div class="card scroll"><h2>Recommended budget per department</h2><p id="planrec" class="mute" style="margin:0 0 12px"></p><table id="buds"></table>
+    <p class="note">"Expected under plan" is the average cost per head after reassigning unused seats. "Ceiling" is the most one active person may use, so it is higher than an average on purpose. Caps are peer norms: what colleagues of the same role and level who get a positive return spend today. They describe use, not need. Interns and juniors are never set below the department cap, because they iterate more while learning. Treat every cap as a starting point to adjust with the team.</p></div>
+    <div class="card scroll"><h2>Cost by model: route routine work to a cheaper one</h2><table id="route"></table>
+    <p class="note" id="routenote"></p>
+    <p class="note">Prices and shares: frontier price<sup class="ref" data-ref="frontier_token_price" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup>, cheaper model<sup class="ref" data-ref="cheap_token_price" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup>, quality penalty<sup class="ref" data-ref="quality_penalty" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup>, routine share<sup class="ref" data-ref="routine_share" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup>.</p></div>
+  </div>
+  <div class="tab" id="tab-value" hidden>
+    <div class="card"><h2>Define what AI output is worth to you</h2>
+      <p style="margin:0 0 8px">AI value is: <b>extra output</b> (measured from your data) <b>x what one unit of output is worth</b> <b>x the share you count as real</b> (the realization slider<sup class="ref" data-ref="realization" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup>)<span id="vben"></span>.
+        The tool measures the first part. You decide the second, per department. By default a unit is worth the hours it takes times an hourly rate<sup class="ref" data-ref="value_unit" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup>.</p>
+      <p class="note" style="margin:0">Ways to value a unit: time saved at a loaded hourly rate (the default); the handling cost avoided per ticket; the expected margin of a qualified sales opportunity; what a contract review costs externally. Use your own figures: the tool does not know them.</p></div>
+    <div class="card"><div class="scroll"><table id="vtab"></table></div>
+      <div class="row" style="margin-top:12px"><button onclick="applyValue()">Apply</button><button class="ghost" onclick="resetValue()">Back to the data's figures</button><span id="vmsg" class="mute"></span></div>
+      <div id="verr" class="err"></div>
+      <p class="note">Blank fields use the data's own figures (shown in gray). "All departments" fills in for any department you leave alone. An extra benefit per user is for value that is not extra output, such as retention or quality; it is counted in full and is not reduced by the realization share.</p></div>
+    <div class="card"><h2>What counts as one unit of output?</h2>
+      <p style="margin:0 0 8px">Name the unit your team really produces, and if you track several things, say how much each counts. For example, one pull request = 1, one code review = 0.3, one commit = 0.1. The tool then measures the AI effect on that mix.</p>
+      <div class="scroll"><table id="utab"></table></div>
+      <p class="note">Your CSV supplies the metrics: the required <code>outcome_units</code> column, plus any extra <code>outcome_&lt;name&gt;</code> columns. A weighted mix is a new unit, so also set what one is worth in the table above (dollars per unit, or hours per unit). Blank weights mean 1 for the main metric and 0 for the others.</p>
+      <p class="note"><b>Speed.</b> If you track the time to finish a task (lower is better), choose it under "Measure the effect by". The AI effect is then the fall in time per task, applied to each person's baseline task volume and priced as freed-up hours at their hourly rate. Do not weight a time column as output.</p></div>
+    <div class="card" id="vdelta" hidden><h2>What your definition changed</h2><div id="vdtext"></div></div>
+    <details class="card"><summary>Advanced: the definition as JSON</summary>
+      <textarea id="vjson" rows="8" spellcheck="false" style="font-family:ui-monospace,Menlo,monospace;font-size:12px;margin-top:8px"></textarea>
+      <div class="row" style="margin-top:8px"><button class="ghost" onclick="applyValueJson()">Apply JSON</button><button class="ghost" onclick="downloadValue()">Download</button></div>
+      <p class="note">Keys are department names or "*". Fields: mode ("time" or "unit"), value_per_unit, hours_per_unit, hourly_rate, benefit_per_user.</p></details>
+  </div>
+  <div class="tab" id="tab-rules" hidden>
+    <div class="card"><h2>The tool's judgement calls, as settings</h2>
+      <p style="margin:0 0 8px">These are rules of thumb built into the tool: when a seat counts as unused, what counts as high spend, how many months to measure, what a fixed budget caps. Change them to match how your organization works. Each shows its default and where it comes from (ⓘ). Risky settings are allowed but come with a warning that says what the stress tests found.</p>
+      <p class="note" style="margin:0">The sliders in "Data and assumptions" cover the value share, elasticity, the cheaper model's price and the pay-per-use price. Value and output are on the Your value tab.</p></div>
+    <div id="rulebox"></div>
+    <div class="card"><h2>Share of tokens that are routine work, by department</h2>
+      <div class="scroll"><table id="rtab"></table></div>
+      <p class="note">Used by the model-routing estimate: how much of each department's use is summaries, drafts and lookups that a smaller model could do. Measure it on your own traffic before relying on it.</p></div>
+    <div class="card"><div class="row"><button onclick="applyRules()">Apply</button><button class="ghost" onclick="resetRules()">Back to defaults</button><span id="rmsg" class="mute"></span></div>
+      <div id="rwarn" class="warn" style="margin-top:8px"></div><div id="rerr" class="err"></div></div>
+  </div>
+  <div class="tab" id="tab-real" hidden>
+  <div class="card chart" id="c-index"></div>
+    <div class="card"><h2>Why we use a control group</h2>
+    <div class="cmp"><span class="mute">Naive before/after:</span><b id="naive"></b>
+      <span class="mute">Everyone's output rose anyway:</span><b id="ctrl"></b>
+      <span class="mute">AI effect (adopters minus non-adopters):</span><b id="did" style="color:var(--good)"></b></div>
+    <p id="selnote" class="note" style="margin:8px 0 0"></p>
+    <p class="note" style="margin:4px 0 0">Baseline and measured months<sup class="ref" data-ref="windows" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup>; pre-rollout check<sup class="ref" data-ref="pretrend" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup>.</p>
+    <p class="note">Output rose for people who never used AI too (busy season, new product). A plain before/after would credit all of it to AI.
+    Each person is compared with their own first two months, as a ratio, so an intern and a senior are comparable.
+    Limit: people choose whether to adopt. We test whether adopters were already pulling ahead before rollout and remove that gap, but differences that only start at rollout cannot be seen.</p></div>
+    <div id="kpis" class="grid kpis"></div>
+    <div class="card scroll"><h2>ROI by department, with 95% range</h2><table id="depts"></table>
+    <p class="note">"Uncertain" means the range includes zero: the data cannot tell this department from break-even. "Break-even credit" is the share of the estimated gain that must be real for the department to pay for itself.</p></div>
+    <div class="card scroll"><h2>ROI by level</h2><table id="levels"></table>
+    <p class="note">Value is time saved times hourly rate, so lower-paid levels show lower dollar ROI on the same seat. This is not a verdict on their work, and it ignores learning and ramp-up. Peer comparisons for high spend are made within level, never across.</p></div>
+    <div class="card" id="robcard"><h2>How much of this is opinion?</h2>
+    <div id="kinds" class="grid two"></div>
+    <p class="note" id="robnote">Computing 180 assumption scenarios…</p>
+    <table id="robdec"></table><table id="robdep" style="margin-top:12px"></table></div>
+  <details class="card" id="valcard" hidden><summary style="cursor:pointer"><b>Does the analysis find what is really there?</b> <span class="mute">(synthetic data only)</span></summary>
+    
+    <p class="note" style="margin:0 0 10px">This company is synthetic, so we know the truth. Hidden labels (usage patterns built into the generator) are compared with what the analysis flagged. Messy cases are included: part-timers, people on leave, new hires with no baseline.</p>
+    <table id="val"></table><p class="note" id="valnote"></p></details>
+  </div>
+  <div class="tab" id="tab-math" hidden>
+    <div class="card" id="mathcard"><h2>Show the math</h2>
+    <div class="row" style="margin-bottom:10px"><div><label>Department</label><select id="mdept" onchange="loadMath(this.value)" style="background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font:inherit"></select></div>
+      <div class="mute" style="max-width:640px">Every figure above is built from these steps, with this department's own numbers and your current sliders. Only averages and totals appear. No individual is shown.</div></div>
+    <div id="msteps" class="grid"></div>
+    <h2 style="margin-top:16px">Budget policies</h2><div id="mpols" class="grid"></div></div>
+  </div>
+  <div class="tab" id="tab-evidence" hidden>
+    <div class="card"><h2>Does the published research support these numbers?</h2>
+      <p id="evtext" style="margin:0 0 8px"></p><p id="evspeed" style="margin:0 0 8px"></p><ul id="evctx" class="note" style="margin:0;padding-left:20px"></ul>
+      <p class="note" id="evnote"></p>
+      <p class="note" style="margin:4px 0 0">Published range used<sup class="ref" data-ref="published_range" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup>; perception gap<sup class="ref" data-ref="metr_perception" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup>; calibration of the demo company<sup class="ref" data-ref="archetype_lifts" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup><sup class="ref" data-ref="level_lift" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup>.</p></div>
+    <div class="card chart" id="c-evidence"></div>
+    <div class="card" id="becard"><h2>What effect does this spend need to pay off?</h2>
+      <p id="betext" style="margin:0 0 10px"></p>
+      <div class="scroll"><table id="bescen"></table></div>
+      <details><summary>By department</summary><div class="scroll"><table id="bedept"></table></div></details>
+      <p class="note">Break-even effect = total monthly cost / dollars of value per 100% effect, if every user gained the same share of their baseline output (at your current realization). Published effects are for people who used AI, so each scenario applies one to the people counted as users. What-ifs, not forecasts.</p></div>
+    <div class="card" id="lvcard"><h2>Do less experienced people gain more?</h2>
+      <p id="lvtext" style="margin:0 0 10px"></p><div class="scroll"><table id="lvtab"></table></div>
+      <ul id="lvpub" class="note" style="padding-left:20px"></ul>
+      <p class="note">Published studies say they do. If your data agrees, that is a reason not to cap juniors below the department, and the tool already floors junior and intern caps at the department cap.</p></div>
+    <div class="card" id="pgcard"><h2>Do employees' own estimates match the measurement?</h2>
+      <div class="row"><div><label for="pgin">What do employees say AI adds to their output? (%)</label>
+        <input id="pgin" type="number" step="1" min="-100" max="500" placeholder="e.g. 20" style="width:140px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font:inherit"></div>
+        <button onclick="checkPerception()">Compare</button></div>
+      <p id="pgtext" style="margin:10px 0 0"></p><p id="pgnote" class="note"></p></div>
+    <div class="card"><h2>The studies, with what was checked</h2><div id="evlist" class="gl"></div></div>
+    <div class="card"><h2>Left out on purpose</h2><ul id="evleft" class="note" style="margin:0;padding-left:20px"></ul></div>
+  </div>
+  <div class="tab" id="tab-sources" hidden>
+    <div class="card"><h2>Where every value comes from</h2>
+      <p style="margin:0 0 6px">Every number the tool uses is listed here with its origin. Most of the dollar figures are <b>assumptions</b>, and the page says so: a few are anchored to public price lists or published studies, some are our rules of thumb, and the demo company's figures are invented. Where you see ⓘ elsewhere, it opens the matching entry.</p>
+      <p class="note" style="margin:0">The values are read from the running code, so this page cannot disagree with the tool. Price lists and studies were read on the date shown; a source marked "not confirmed" is a third-party listing.</p>
+      <div id="srcfilter" class="row" style="margin-top:12px;gap:6px"></div>
+      <div style="margin-top:10px"><label for="srcq">Search</label><input id="srcq" type="search" placeholder="e.g. realization, seat price, 95%" oninput="renderSources()" style="width:100%;max-width:380px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font:inherit"></div></div>
+    <div id="srclist"></div>
+  </div>
+  <div class="tab" id="tab-glossary" hidden>
+    <div class="card"><label for="gsearch">Search terms</label>
+      <input id="gsearch" type="search" placeholder="e.g. unused seat, bill risk, control group" oninput="renderGlossary()" style="width:100%;max-width:420px;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font:inherit">
+      <p class="note">Plain definitions with a worked example. Where an example says "in this data", it uses this company's live numbers and changes with the sliders.</p></div>
+    <div id="gl"></div>
+  </div>
+  <div class="tab" id="tab-ask" hidden>
+    <div class="card"><h2>Ask the analyst</h2>
+    <div class="chips" id="chips"></div>
+    <textarea id="q" rows="2" placeholder="e.g. Which department should lose seats, and what would we save?"></textarea>
+    <div style="margin-top:8px"><button id="ab" onclick="ask()">Ask</button></div>
+    <div id="ans" class="ans"></div><div id="aerr" class="err"></div>
+    <details id="evd"><summary>Evidence: tool calls behind the answer</summary><pre id="evpre"></pre></details>
+  </div>
+  </div>
+</main>
+<script src="charts.js"></script>
+<script>window.AIL_STATIC=true;</script>
+<script src="static-mode.js"></script>
+<script>
+const $=id=>document.getElementById(id), usd=n=>(n<0?'-':'')+'$'+Math.abs(Math.round(n)).toLocaleString();
+const pct=n=>Math.round(n*100)+'%', pp=n=>(n*100).toFixed(1)+'%', x=n=>n.toFixed(1)+'x';
+const roiRange=v=>`${x(v.roi)} <span class="mute">(${x(v.roi_low)} to ${x(v.roi_high)})</span>`;
+let R;
+
+
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function md(text){  /* a small, safe markdown renderer: everything is escaped first, then only these tags are added */
+  const lines=esc(text).split('\n');let out='',list=null,tbl=[];
+  const inl=s=>s.replace(/\*\*([^*\n]+)\*\*/g,'<b>$1</b>').replace(/`([^`\n]+)`/g,'<code>$1</code>');
+  const closeList=()=>{if(list){out+='</'+list+'>';list=null}};
+  const cells=r=>r.trim().replace(/^\||\|$/g,'').split('|').map(c=>c.trim());
+  const flushTbl=()=>{if(!tbl.length)return;const sep=tbl.length>1&&/^[\s|:-]+$/.test(tbl[1]);const head=sep?cells(tbl[0]):null;const body=(sep?tbl.slice(2):tbl).map(cells);
+    out+='<table class="mdt">'+(head?'<tr>'+head.map(c=>'<th>'+inl(c)+'</th>').join('')+'</tr>':'')+body.map(r=>'<tr>'+r.map(c=>'<td>'+inl(c)+'</td>').join('')+'</tr>').join('')+'</table>';tbl=[]};
+  for(const raw of lines){const l=raw.trimEnd();let m;
+    if(/^\s*\|.*\|\s*$/.test(l)){closeList();tbl.push(l);continue}
+    flushTbl();
+    if(!l.trim()){closeList();continue}
+    if(/^\s*-{3,}\s*$/.test(l)){closeList();out+='<hr>';continue}
+    if((m=l.match(/^\s*#{1,4}\s+(.*)$/))){closeList();out+='<div class="mdh">'+inl(m[1])+'</div>';continue}
+    if((m=l.match(/^\s*[-*\u2022]\s+(.*)$/))){if(list!=='ul'){closeList();out+='<ul>';list='ul'}out+='<li>'+inl(m[1])+'</li>';continue}
+    if((m=l.match(/^\s*\d+[.)]\s+(.*)$/))){if(list!=='ol'){closeList();out+='<ol>';list='ol'}out+='<li>'+inl(m[1])+'</li>';continue}
+    closeList();out+='<p>'+inl(l)+'</p>'}
+  closeList();flushTbl();return out}
+/*md-end*/
+const refName=id=>{const e=SRC&&SRC.entries.find(x=>x.id===id);return e?e.label:id};
+const RF=id=>`<sup class="ref" data-ref="${id}" tabindex="0" role="button" aria-label="Where this value comes from">ⓘ</sup>`;
+let SRC=null,SRCFILTER='all';
+async function loadSources(){try{SRC=await j('/api/sources');renderSources();if(typeof loadMath==='function'&&mdept)loadMath(mdept)}catch(e){}}
+function refLinks(e,parent,small){for(const id of e.refs){const r=SRC.refs[id];if(!r)continue;const d=document.createElement('div');d.className='srcref';
+  const a=document.createElement('a');a.textContent=r.label;if(/^https:\/\//.test(r.url)){a.href=r.url;a.target='_blank';a.rel='noopener'}d.appendChild(a);
+  const t=document.createElement('span');t.textContent=' · '+(r.confirmed?'read '+r.read:'not confirmed')+(small?'':': '+r.says);d.appendChild(t);parent.appendChild(d)}}
+function entryDom(e,pop){const d=document.createElement('div');
+  const h=document.createElement(pop?'h4':'h3');h.textContent=e.label;d.appendChild(h);
+  const k=document.createElement('span');k.className='kind k-'+e.kind;k.textContent=SRC.kinds[e.kind];d.appendChild(k);
+  const v=document.createElement('p');const vb=document.createElement('b');vb.textContent=e.value;v.appendChild(document.createTextNode('Value used: '));v.appendChild(vb);
+  if(e.current&&e.current!==e.value){v.appendChild(document.createTextNode(' · you set '));const c=document.createElement('b');c.textContent=e.current;v.appendChild(c)}d.appendChild(v);
+  const w=document.createElement('p');w.textContent='Used in: '+e.where;d.appendChild(w);
+  const y=document.createElement('p');y.style.color='var(--text)';y.textContent=e.why;d.appendChild(y);
+  if(e.caveat){const c=document.createElement('p');c.textContent='Caveat: '+e.caveat;d.appendChild(c)}
+  refLinks(e,d,pop);return d}
+function renderSources(){if(!SRC||!$('srclist'))return;const q=($('srcq').value||'').toLowerCase().trim();
+  const counts={};SRC.entries.forEach(e=>counts[e.kind]=(counts[e.kind]||0)+1);
+  const f=$('srcfilter');f.replaceChildren();const mk=(key,label)=>{const b=document.createElement('button');b.className='ghost';b.style.cssText='padding:4px 10px;font-size:12px;'+(SRCFILTER===key?'border-color:var(--accent)':'');b.textContent=label;b.onclick=()=>{SRCFILTER=key;renderSources()};f.appendChild(b)};
+  mk('all','All ('+SRC.entries.length+')');Object.keys(SRC.kinds).filter(k=>counts[k]).forEach(k=>mk(k,SRC.kinds[k]+' ('+counts[k]+')'));
+  const L=$('srclist');L.replaceChildren();let g='',grid=null;
+  for(const e of SRC.entries){if(SRCFILTER!=='all'&&e.kind!==SRCFILTER)continue;if(q&&!(e.label+' '+e.why+' '+e.value+' '+e.where).toLowerCase().includes(q))continue;
+    if(e.group!==g){g=e.group;const h=document.createElement('div');h.className='gg';h.textContent=g;L.appendChild(h);grid=document.createElement('div');grid.className='gl';L.appendChild(grid)}
+    const c=document.createElement('div');c.className='card gt';c.id='src-'+e.id;c.appendChild(entryDom(e,false));grid.appendChild(c)}
+  if(!L.children.length)L.textContent='No value matches that.'}
+let POP=null;
+function closeRef(){if(POP){POP.remove();POP=null}}
+function showRef(el){closeRef();if(!SRC)return;const e=SRC.entries.find(x=>x.id===el.dataset.ref);if(!e)return;
+  POP=document.createElement('div');POP.className='refpop';POP.appendChild(entryDom(e,true));
+  const more=document.createElement('p');const a=document.createElement('a');a.href='#sources';a.textContent='See all sources';a.onclick=ev=>{ev.preventDefault();closeRef();showTab('sources');const t=$('src-'+e.id);if(t)t.scrollIntoView({block:'center'})};more.appendChild(a);POP.appendChild(more);
+  document.body.appendChild(POP);const b=el.getBoundingClientRect();POP.style.left=Math.max(8,Math.min(b.left,window.innerWidth-POP.offsetWidth-8))+'px';
+  const below=b.bottom+8+POP.offsetHeight<window.innerHeight;POP.style.top=(below?b.bottom+8:Math.max(8,b.top-POP.offsetHeight-8))+'px'}
+document.addEventListener('click',ev=>{const r=ev.target.closest&&ev.target.closest('.ref');if(r){ev.preventDefault();showRef(r)}else if(!ev.target.closest||!ev.target.closest('.refpop'))closeRef()});
+document.addEventListener('keydown',ev=>{if(ev.key==='Escape')closeRef();if((ev.key==='Enter'||ev.key===' ')&&ev.target.classList&&ev.target.classList.contains('ref')){ev.preventDefault();showRef(ev.target)}});
+let ROB=null;
+const GL=[
+ ['The money','Unused seat','A paid AI seat used fewer than 3 times a month on average over the last 3 months. It usually means the tool does not fit the person\'s work, or nobody explained it. It is about the setup, not the person.',
+  r=>`A $40 seat with 1 session a month is unused. In this data: <b>${r.waste.idle_seats}</b> unused seats, worth <b>${usd(r.waste.idle_monthly)}</b> a month.`],
+ ['The money','High-spend seat','A seat whose token spend is above what colleagues in the same role and level spend, and whose estimated return is below its cost. It is a reason to check training and workflow fit, not a verdict on anyone.',
+  r=>{const e=r.budgets.Engineering||Object.values(r.budgets)[0],c=(e.token_cap_by_level||{}).mid;return `A mid-level engineer spending far above ${c?usd(c)+' a month':'the peer norm'} with no matching gain in output. In this data: <b>${r.waste.over_people}</b> seats, up to <b>${usd(r.waste.over_monthly)}</b> a month above peer norms.`}],
+ ['The money','Recoverable spend: solid and potential','Solid is the saving from unused seats, which comes straight from usage. Potential is spend above peer norms on high-spend seats: cutting it can cost output, so start with training.',
+  r=>`In this data: solid <b>${usd(r.waste.idle_monthly)}</b> + potential <b>${usd(r.waste.over_monthly)}</b> = <b>${usd(r.waste.total_monthly)}</b> a month (${usd(r.waste.total_annual)} a year).`],
+ ['The money','Seat savings realized','Contracts have minimums and notice periods, so reassigning a seat does not always save its full price. We count 80% by default (slider).',
+  r=>`Reassigning a $60 seat saves 0.8 x $60 = <b>$48</b> a month.`],
+ ['The money','Cost per head: now, expected, ceiling','Now is the average cost over everyone, including unused seats. Expected is the average under the recommended plan. Ceiling is the most one active person may use (seat plus token cap). A ceiling is higher than an average on purpose.',
+  r=>{const e=r.budgets.Engineering?['Engineering',r.budgets.Engineering]:Object.entries(r.budgets)[0];return `${e[0]}: now <b>${usd(e[1].current_per_head)}</b>, expected <b>${usd(e[1].expected_per_head)}</b>, ceiling <b>${usd(e[1].ceiling_per_head)}</b> per active person.`}],
+
+ ['The return','Baseline','A person\'s own output in the first two months, before AI rollout. Every later month is compared with it, as a ratio, so an intern and a senior are comparable.',
+  r=>`If someone merged 13 PRs a month before rollout and 14.2 after, growth is 14.2 / 13 - 1 = <b>9.2%</b>.`],
+ ['The return','Value (estimated dollars)','Time saved turned into money: realization x effect x baseline output x hours per unit x hourly rate. It is an estimate, not a measurement.',
+  r=>`0.5 x 9.2% x 13 units x 3 hours x $86 = <b>$154</b> a month for one typical user.`],
+ ['The return','Realization','The share of the extra output that is real, bankable value. Extra output is not always extra revenue. It is a slider: the main opinion in the tool.',
+  r=>`If extra output is worth $200 on paper and realization is 50%, we count <b>$100</b>.`],
+ ['The return','Dollars back per $1 (ROI)','How much value comes back for each dollar spent. ROI = (value - cost) / cost, so $1.33 back per $1 is an ROI of 0.33. Below $1.00 back means it costs more than it returns.',
+  r=>{const c=r.summary.company;return `A user costing $116 with $154 of value: ($154 - $116) / $116 = 0.33, so <b>$1.33 back per $1</b>. In this data the company is at <b>$${(1+c.roi).toFixed(2)} back per $1</b>.`}],
+ ['The return','Break-even effect','The size of AI effect on output that makes the spend pay for itself, at your current realization. If the measured effect is above it, AI pays off; if the range crosses it, the data cannot say.',
+  r=>{const b=window.EVIDENCE&&window.EVIDENCE.breakeven;return b&&b.company.breakeven!=null?`In this data: needs <b>${pp1(b.company.breakeven)}</b>, measured <b>${pp1(b.company.measured)}</b> (${b.company.verdict}).`:'Open the Evidence tab to load it.'}],
+ ['Trust and fairness','Perception gap','The difference between what people say AI does for them and what was measured. In METR\'s trial, developers believed they were 20% faster while the measurement showed 19% slower, so the tool measures output instead of asking.',
+  r=>{const e=window.EVIDENCE&&window.EVIDENCE.comparison;if(!e)return 'Open the Evidence tab to try it.';const gap=(20-e.your_effect).toFixed(1);return `If employees say AI adds 20% and the measured effect is ${e.your_effect.toFixed(1)}% (range ${e.your_low.toFixed(1)}% to ${e.your_high.toFixed(1)}%), the gap is <b>${gap} points</b>${20>e.your_high?', above even the top of the range':''}. Try your own number in the Evidence tab.`}],
+ ['The return','Value definition','How you decide what a unit of output is worth, per department: the hours it takes times an hourly rate (the default, from your data), or a dollar figure you set, plus an optional benefit per user for things that are not extra output. The tool measures the extra output; the definition turns it into dollars.',
+  r=>{const v=r.value;return v&&v.custom?`In this analysis you have defined it for: <b>${Object.keys(v.defs).map(k=>k==='*'?'all departments':k).join(', ')}</b>.`:'Nothing is customized: every department uses the hours and rates in the data. Change it on the Your value tab.'}],
+ ['Trust and fairness','Source of a value','Each number is labelled by origin: published study, price list, standard convention, our method choice, our rule of thumb, our assumption with no source, invented for the demo, defined by you, or computed from your data. The label tells you how much weight to give it.',
+  r=>`An assumption with no source, such as counting 50% of extra output as real, is a placeholder: change it and see what moves. Click any ⓘ, or open the Sources tab.`],
+ ['The return','Speed (time per task)','Output can be measured as how fast a task gets done instead of how many get done. Time per task is lower-is-better, so the effect is baseline time divided by recent time, minus 1. The gain is then applied to each person\'s baseline task volume and priced as freed-up hours at their hourly rate.',
+  r=>`If a task fell from 100 to 80 minutes, the speed gain is 100 / 80 - 1 = <b>25%</b>, which is <b>20% less</b> time. Someone who did 20 such tasks a month at 80 minutes frees about 20 x 20 min = 6.7 hours.`],
+ ['The return','Net value','Value minus cost, in dollars. Use it to compare policies, because the ratio rises whenever you simply spend less.',
+  r=>{const p=r.policies.find(x=>x.name==='Pay per use'),v=r.policies.find(x=>x.name==='Variable by role');return `A policy that spends $10 and returns $20 has a higher ratio (1.0) than one that spends $100 and returns $150 (0.5), but the second nets $50 vs $10. In this data: pay per use nets <b>${usd(p.net)}</b>, variable by role <b>${usd(v.net)}</b>.`}],
+ ['The return','Break-even credit','The share of the estimated gain that must be real for a team to pay for itself. Low is good: a team that breaks even at 15% credit is safe even if we are too optimistic.',
+  r=>{const e=Object.entries(r.summary.departments).find(([k,v])=>v.break_even_realization)||[];return `Break-even credit = 50% x cost $116 / value $154 = <b>38%</b>. In this data${e[0]?`, ${e[0]} is at <b>${pct(e[1].break_even_realization)}</b>`:''}.`}],
+
+ ['The evidence','Control group','People who did not use AI. Their output shows what happens anyway: a busy season, a new product. We subtract it so AI is not credited with it.',
+  r=>{const c=r.summary.company;return `In this data, non-users grew <b>${pp(c.control_growth)}</b> over the same months, so that much of the growth is not AI.`}],
+ ['The evidence','Naive lift vs AI effect','Naive lift is growth of AI users alone. The AI effect is (1 + user growth) / (1 + control growth) - 1. A before-and-after check without a control group credits AI with everything.',
+  r=>{const c=r.summary.company;return `Users grew <b>${pp(c.naive_lift)}</b>, others <b>${pp(c.control_growth)}</b>, so the AI effect is (1 + ${pp(c.naive_lift)}) / (1 + ${pp(c.control_growth)}) - 1 = <b>${pp(c.did_lift)}</b>.`}],
+ ['The evidence','Parallel-trends check','Before rollout, people who later adopted AI and people who did not should have grown alike. If adopters were already pulling ahead, part of the apparent gain is self-selection, so we remove that gap and widen the ranges.',
+  r=>{const s=r.summary.company.selection;return s.tested?`In this data the gap before rollout was <b>${pp(s.gap_per_month)}</b> a month (${s.significant?'significant: a warning is shown':'within noise: check passed'}).`:'This check needs two months before rollout.'}],
+ ['The evidence','95% range and confidence','The range in which the true value very likely falls. "Clear" means the whole range is on one side of break-even. "Not proven" means the range includes break-even, so the data cannot say, and the tool does not guess.',
+  r=>{const e=r.summary.departments.Engineering?['Engineering',r.summary.departments.Engineering]:Object.entries(r.summary.departments)[0];return `${e[0]}: AI effect <b>${pp(e[1].did_lift)}</b>, range ${pp(e[1].ci_low)} to ${pp(e[1].ci_high)}. ROI ${e[1].roi.toFixed(2)}, range ${e[1].roi_low.toFixed(2)} to ${e[1].roi_high.toFixed(2)}: <b>${e[1].confidence==='clear'?'clear':'not proven'}</b>.`}],
+ ['The evidence','Shrinkage','Single-person estimates are noisy, so each is pulled toward the department average. w says how much of the individual number to keep. Nobody is ranked on their own number.',
+  r=>`If one person's number is +30%, the department averages +9% and w = 0.4: 9% + 0.4 x (30% - 9%) = <b>17.4%</b>.`],
+ ['The evidence','Precision and recall (self-check)','On the synthetic company the truth is known, so the tool scores itself. Precision: of the seats flagged, how many really are. Recall: of those that really are, how many were found.',
+  r=>`If it flags 100 unused seats and 98 really are unused, precision is <b>98%</b>. If 120 really are unused and it found 98, recall is <b>82%</b>.`],
+
+ ['The budget','Status quo','Everyone keeps a seat and token spend is uncapped. The baseline every other policy is compared with.',
+  r=>{const p=r.policies.find(x=>x.name==='Status quo');return `In this data: cost <b>${usd(p.monthly_cost)}</b> a month, net <b>${usd(p.net)}</b>.`}],
+ ['The budget','Fixed budget','Everyone keeps a seat and token spend is capped at the same dollar amount ($60 here). Predictable, but it treats very different roles alike.',
+  r=>{const p=r.policies.find(x=>x.name==='Fixed budget');return `In this data: net <b>${usd(p.net)}</b>, bill risk <b>+${pct(p.bill_risk)}</b>.`}],
+ ['The budget','Pay per use','No seats: you pay for tokens at list price. Cheaper when many seats sit unused, but the bill moves with usage and people may ration use when they see a meter.',
+  r=>{const p=r.policies.find(x=>x.name==='Pay per use');return `In this data: net <b>${usd(p.net)}</b>, but the bill can rise <b>${pct(p.bill_risk)}</b> in a peak month.`}],
+ ['The budget','Variable by role','Seats only for people who use them. Each department and level gets a token allowance set from what similar colleagues spend, pooled across the department. Saves almost only through unused seats; the caps are a guardrail.',
+  r=>`In this data: saves <b>${usd(r.plan.company.saving)}</b> a month, of which <b>${usd(r.plan.company.from_seats)}</b> from seats and <b>${usd(r.plan.company.from_caps)}</b> from caps.`],
+ ['The budget','Bill risk','How much worse the bill gets if everyone spends at their own highest month. bill risk = cost at peak / cost - 1. Lower is more predictable.',
+  r=>{const p=r.policies.find(x=>x.name==='Pay per use');return `Normal month $100,000, everyone-at-peak $150,000: 150 / 100 - 1 = <b>50%</b>. In this data pay per use is <b>${pct(p.bill_risk)}</b>.`}],
+ ['The budget','List-price multiplier and break-even price','How much more tokens cost per unit without a seat plan. It is an assumption you should replace with a real quote. The break-even price is where pay per use stops being the best policy.',
+  r=>`If the seat plan prices tokens at $5 per 1M and list is $8, the multiplier is 1.6x. In this data pay per use is best only while the multiplier stays under <b>${r.ppu_breakeven.multiplier||'a limit'}x</b>; you assumed <b>${r.ppu_breakeven.assumed}x</b>.`],
+ ['The budget','Elasticity','How much value is lost when someone\'s allowance is cut. 0 means none, 1 means value falls in step with usage. A slider, not a measurement.',
+  r=>`With elasticity 0.5, cutting an allowance from $100 to $25 keeps (25 / 100)^0.5 = <b>50%</b> of that person\'s value.`],
+ ['The budget','Token cap and peer norm','The monthly token allowance for a role and level: what colleagues of the same role and level who get a positive return spend today (75th percentile). It describes use, not need.',
+  r=>{const e=r.budgets.Engineering||Object.values(r.budgets)[0];const m=e.token_cap_by_level||{};return `Engineering caps in this data: ${Object.entries(m).map(([l,c])=>l+' '+usd(c)).join(', ')||'n/a'} a month.`}],
+ ['The budget','Learning floor','Interns and juniors are never capped below the department-wide cap, because they iterate more while learning and a peer norm would understate what they need.',
+  r=>{const e=r.budgets.Engineering||Object.values(r.budgets)[0];const m=e.token_cap_by_level||{};return `If juniors alone would get $50 but the department cap is ${usd(e.recommended_token_cap)}, juniors get <b>${usd(e.recommended_token_cap)}</b>. In this data: junior ${m.junior?usd(m.junior):'n/a'}.`}],
+ ['The budget','Model routing','Sending routine tasks (summaries, drafts, lookups) to a cheaper open model such as a smaller Nemotron, and keeping the large model for hard problems.',
+  r=>`Moving routine tokens from $${r.routing.frontier_price.toFixed(2)} to $${r.routing.cheap_price.toFixed(2)} per 1M saves <b>${usd(r.routing.saving)}</b> a month, minus <b>${usd(r.routing.value_at_risk)}</b> of value put at risk, net <b>${usd(r.routing.net_gain)}</b>.`],
+ ['The budget','Drift alert','A flag when a department\'s monthly spend jumps by more than a set share (15% by default) over the previous month. It often means a new rollout or an automated agent running too much.',
+  r=>{const a=r.trend.alerts[0];return a?`In this data: ${a.department} rose <b>${pct(a.change)}</b> in ${a.month} (${usd(a.previous)} to ${usd(a.latest)}).`:`In this data no department rose more than ${pct(r.trend.threshold)}.`}],
+
+ ['Trust and fairness','Measured, estimated, assumed, judgement','Measured: counted from data. Estimated: computed with a range. Assumed: a slider you can move. Judgement: a choice made in the tool, shown so you can disagree.',
+  r=>`Sessions per month are <b>measured</b>. The AI effect is <b>estimated</b>. Realization is <b>assumed</b>. "High spend means above the 75th percentile of peers" is <b>judgement</b>.`],
+ ['Trust and fairness','Holds in X% of scenarios','Each decision is re-run in 180 combinations of the assumptions. "Holds" means it is true in at least 95% of them. Act on what holds; for the rest, get the missing number.',
+  r=>ROB?`In this data: ${ROB.decisions.map(d=>`"${d.claim.toLowerCase()}" holds in <b>${pct(d.holds)}</b>`).slice(0,3).join('; ')}.`:'Computing…'],
+ ['Trust and fairness','Peer group (role and level)','People are only compared with others of the same department and level, so an intern is never measured against a senior. Groups too small to be fair fall back to the whole department.',
+  r=>`A junior in Support is compared with other Support juniors, not with senior Legal counsel.`],
+ ['Trust and fairness','Minimum group size','Results are shown only for groups of 10 or more, and no individual is named, ranked or exported. Small groups are first merged within their department, then pooled across departments, and anything still under 10 is hidden.',
+  r=>`7 Legal interns and 5 Legal seniors are shown together as "Legal, all levels" (12 people). Had they totalled 8, they would be hidden.`],
+ ['Trust and fairness','Published evidence','Studies by outside researchers on AI and productivity. They measure different things (time on one task, tasks completed, issues per hour), in different settings, so the page compares your estimate only with studies that measure output and never converts between measures. It is context, not proof.',
+  r=>{const e=window.EVIDENCE;return e?`In this data: your estimate is <b>${e.comparison.your_effect}%</b>; published output studies range <b>${e.comparison.published.min}%</b> to <b>${e.comparison.published.max}%</b> (median ${e.comparison.published.median}%).`:'Open the Evidence tab to load it.'}],
+ ['Trust and fairness','Time on a task vs output','Time on a task asks how fast one job gets done. Output asks how much work gets done over weeks. A 50% faster task does not mean 50% more output, because time is also spent on reviewing, meetings and fixing what the tool got wrong.',
+  r=>`A task that takes 100 minutes now takes 60: 40% less time on that task. If the task is 20% of someone's week, that is 8% of the week, before any rework.`],
+ ['Trust and fairness','Synthetic data','The demo company is generated with known patterns, so the tool can be scored against the truth. Your real data goes through the same steps, but the truth is unknown, so rely on the ranges.',
+  r=>`In this data: ${r.rows.toLocaleString()} employee-month rows. Upload your own CSV from the Data and assumptions drawer.`],
+];
+function renderGlossary(){if(!R)return;const q=($('gsearch').value||'').toLowerCase().trim();let g='',html='';
+  for(const [grp,t,d,e] of GL){let ex='';try{ex=e(R)}catch(err){ex=''}
+    if(q&&!(t+' '+d+' '+ex).toLowerCase().includes(q))continue;
+    if(grp!==g){if(g)html+='</div>';html+=`<div class="gg">${grp}</div><div class="gl">`;g=grp}
+    html+=`<div class="card gt"><h3>${t}</h3><p>${d}</p><div class="ex"><b>Example</b> · ${ex}</div></div>`}
+  $('gl').innerHTML=html?html+'</div>':'<p class="mute">No term matches that search.</p>'}
+
+const back=v=>'$'+(1+v).toFixed(2);
+function renderOverview(){if(!R)return;const r=R,c=r.summary.company,w=r.waste,d=r.summary.departments,be=r.ppu_breakeven;
+  $('o1').textContent=usd(w.idle_monthly)+' a month';
+  $('o1s').textContent=`${w.idle_seats} seats nobody uses, about ${usd(w.idle_monthly*12)} a year. Reassign only after asking the teams. Up to ${usd(w.over_monthly)} more if ${w.over_people} high-spend seats move to peer norms, but that can cost output, so start with training.`;
+  const names=f=>Object.entries(d).filter(([k,v])=>f(v)).map(([k])=>k);
+  const pos=names(v=>v.confidence==='clear'&&v.roi>0), neg=names(v=>v.confidence==='clear'&&v.roi<0), unc=names(v=>v.confidence!=='clear');
+  $('o2').textContent=back(c.roi)+' back per $1';
+  $('o2s').textContent=(c.confidence==='clear'?'Supported by the data. ':`Not proven: it could be as low as ${back(c.roi_low)} or as high as ${back(c.roi_high)}. `)+
+    (pos.length?`Clearly positive in ${pos.join(', ')}. `:'')+(neg.length?`Clearly negative in ${neg.join(', ')}. `:'')+(unc.length?`Not enough evidence in ${unc.join(', ')}.`:'')+(r.value&&r.value.custom?' Dollar figures use your own value definition.':'')+(window.EVIDENCE&&window.EVIDENCE.breakeven.company.breakeven!=null?` Break-even needs a ${(window.EVIDENCE.breakeven.company.breakeven*100).toFixed(1)}% output effect; the data shows ${(c.did_lift*100).toFixed(1)}%.`:'');
+  const vbr=r.policies.find(p=>p.name==='Variable by role'), ppu=r.policies.find(p=>p.name==='Pay per use');
+  const robust=ROB&&ROB.decisions.find(x=>x.id==='vbr_beats_status_quo').holds>=.95;
+  $('o3').textContent='Variable by role';
+  $('o3s').textContent=`Seats only for people who use them, team budgets set from similar teams. It saves about ${usd(r.plan.company.saving)} a month, almost all from unused seats. ${robust?'Beats today\'s setup in every scenario we tested. ':ROB?'Check the assumptions tab: it does not win everywhere. ':''}`+
+    (ppu.net>vbr.net?`Pay per use nets more (${usd(ppu.net)} vs ${usd(vbr.net)} a month) but only while list price stays under ${be.multiplier?be.multiplier+'x':'a limit'} the seat rate, and its bill swings more. Get a quote first.`:'');
+  $('o4').innerHTML=[
+   `Ask the teams with unused seats whether the tool fits their work, then reassign what is not needed: up to <b>${usd(w.idle_monthly)}</b> a month.`,
+   `For the ${w.over_people} high-spend seats, start with training and workflow fit. A team budget is the fallback: up to <b>${usd(w.over_monthly)}</b> a month.`,
+   `Get a real pay-per-use quote. We assumed ${be.assumed}x the seat rate.`,
+   unc.length?`Measure ${unc.join(', ')} with a cleaner pilot next quarter, because the data cannot yet show whether AI pays off there.`:'Keep measuring each quarter.'
+  ].map(t=>`<li>${t}</li>`).join('');}
+function showTab(t){document.querySelectorAll('.tab').forEach(e=>e.hidden=e.id!=='tab-'+t);
+  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
+  try{history.replaceState(null,'','#'+t)}catch(e){}
+  if(window.renderCharts)window.renderCharts()}
+document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+showTab((location.hash||'#overview').slice(1).replace(/[^a-z]/g,'')||'overview');
+async function j(url,opt){if(window.AIL_HOOK)return window.AIL_HOOK(url,opt);const r=await fetch(url,opt);const b=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(b.detail||r.statusText);return b}
+function render(r){R=r;setTimeout(()=>{renderOverview();renderGlossary();renderValue(r);window.renderCharts&&window.renderCharts(r)},0);const c=r.summary.company;
+  const w=r.waste;$('wtot').textContent=usd(w.total_monthly);
+  $('wsub').textContent=`${usd(w.total_annual)} a year in total. Solid: ${w.idle_seats} unused seats, ${usd(w.idle_monthly)}/mo after contract friction. Potential: ${w.over_people} high-spend seats, ${usd(w.over_monthly)}/mo above peer norms, which may cost output if cut, so start with training.`;
+  $('waste').innerHTML='<tr><th>Department</th><th class=n>Unused seats'+RF('idle_sessions')+'</th><th class=n>Unused-seat savings/mo'+RF('seat_savings_realized')+'</th><th class=n>High-spend seats'+RF('high_spend')+'</th><th class=n>Above-norm spend/mo'+RF('peer_percentile')+'</th><th class=n>Recoverable/mo</th></tr>'+
+   Object.entries(w.by_department).map(([k,v])=>`<tr><td>${k}</td><td class=n>${v.idle_seats}</td><td class=n>${usd(v.idle_cost)}</td><td class=n>${v.over_people}</td><td class=n>${usd(v.over_cost)}</td><td class=n><b>${usd(v.total)}</b></td></tr>`).join('');
+  $('acts').innerHTML='<tr><th></th><th>Action</th><th>Department</th><th>Level</th><th class=n>People</th><th class=n>Saves/mo</th><th>Why</th></tr>'+
+   r.actions.map(a=>`<tr><td><input type=checkbox class=ak data-id=${a.id} data-s=${a.monthly_saving} onchange=sumActs()></td><td>${a.kind}</td><td>${a.department}</td><td>${a.level}</td><td class=n>${a.people}</td><td class=n>${usd(a.monthly_saving)}</td><td class=mute>${a.reason}</td></tr>`).join('');
+  $('privnote').textContent='Privacy by design: results are shown for groups of 10 or more. No individual is named, ranked or exported, and the list is a starting point for a conversation with each team.';
+  sumActs();
+  const best=Math.max(...r.policies.map(p=>p.net));
+  $('pols').innerHTML='<tr><th>Policy</th><th class=n>Cost/mo</th><th class=n>Value/mo</th><th class=n>Net/mo</th><th class=n>ROI</th><th class=n title="Extra bill if everyone spends at their own peak month">Bill risk</th><th>How it works</th></tr>'+
+   r.policies.map(p=>`<tr class="${p.net===best?'best':''}"><td>${p.name}</td><td class=n>${usd(p.monthly_cost)}</td><td class=n>${usd(p.monthly_value)}</td><td class=n>${usd(p.net)}</td><td class=n>${x(p.roi)}</td><td class=n>+${pct(p.bill_risk)}</td><td class=mute>${p.description}</td></tr>`).join('');
+  const top=r.policies.reduce((a,b)=>b.net>a.net?b:a);
+  const be=r.ppu_breakeven;$('polnote').textContent=`Highlighted row: highest net value (${top.name}). ROI is a ratio and rises whenever spend falls, so rank on net dollars and check bill risk, the extra cost if everyone spends at their own peak month. ${be.note} You assumed ${be.assumed}x: get a real vendor quote, because this one number can change the winner.`;
+  $('passm').innerHTML=r.policy_assumptions.map(t=>`<li>${t}</li>`).join('');
+  $('buds').innerHTML='<tr><th>Department</th><th>Model</th><th>Confidence</th><th class=n>Cost per head now</th><th class=n>Expected under plan'+RF('seat_savings_realized')+'</th><th class=n>Saves per month</th><th class=n title="The most one active person may use: seat plus token cap. Not an average.">Ceiling per active person'+RF('peer_percentile')+'</th><th>Why</th></tr>'+
+   Object.entries(r.budgets).map(([k,v])=>`<tr><td>${k}</td><td><span class="pill ${v.verdict}">${v.verdict}</span></td><td class="${v.confidence}">${v.confidence}</td><td class=n>${usd(v.current_per_head)}</td><td class=n><b>${usd(v.expected_per_head)}</b></td><td class=n>${usd(v.saving_monthly)}<br><span class=mute style="font-size:12px">seats ${usd(v.saving_from_seats)} · caps ${usd(v.saving_from_caps)}</span></td><td class=n>${usd(v.ceiling_per_head)}<br><span class=mute style="font-size:12px">${Object.entries(v.token_cap_by_level).map(([l,c])=>l[0].toUpperCase()+l.slice(1)+' '+usd(c)).join(', ')||''}</span></td><td class=mute>${v.reason}</td></tr>`).join('');
+  const pc=r.plan.company;$('planrec').innerHTML=`<b>Where the plan's saving comes from.</b> The plan saves <b>${usd(pc.saving)} a month</b>: ${usd(pc.from_seats)} from reassigning unused seats and only ${usd(pc.from_caps)} from caps, because the department pool lets heavy users draw on colleagues' unused allowance. The extra ${usd(r.waste.over_monthly)} of above-norm spend in the headline is not captured by the plan. Hard per-person caps would save ${usd(pc.hard_cap_saving)} but cost about ${usd(pc.hard_cap_value_lost)} a month in output, so the net is similar. Training and workflow fit are the better lever for that part.`;
+  const rt=r.routing;
+  $('route').innerHTML='<tr><th>Department</th><th class=n>Tokens/mo (M)</th><th class=n>Routine share'+RF('routine_share')+'</th><th class=n>Saving/mo</th><th class=n>Value at risk</th><th class=n>Net gain/mo</th></tr>'+
+   Object.entries(rt.by_department).map(([k,v])=>`<tr><td>${k}</td><td class=n>${v.monthly_tokens_m}</td><td class=n>${pct(v.routine_share)}</td><td class=n>${usd(v.saving)}</td><td class=n>${usd(v.value_at_risk)}</td><td class=n><b>${usd(v.net_gain)}</b></td></tr>`).join('')+
+   `<tr><td><b>Total</b></td><td></td><td></td><td class=n><b>${usd(rt.saving)}</b></td><td class=n>${usd(rt.value_at_risk)}</td><td class=n><b>${usd(rt.net_gain)}</b></td></tr>`;
+  $('routenote').textContent=`Assumes routine tokens move from $${rt.frontier_price.toFixed(2)} to $${rt.cheap_price.toFixed(2)} per 1M tokens and ${pct(rt.quality_penalty)} of their value is lost. The routine share is a planning assumption: measure it on your own traffic before relying on it. Set the price to your actual Token Factory rate with the slider.`;
+  const sl=c.selection;$('selnote').innerHTML=!sl.tested?'<span class=warn>Parallel-trends check skipped: it needs two months before rollout.</span>':sl.significant?`<span class=warn>Warning: before rollout, people who later adopted AI were already growing ${pp(sl.gap_per_month)} a month faster than those who did not. We removed ${pp(sl.adjustment)} for this, but treat the effect as less certain.</span>`:`Parallel-trends check passed: before rollout, adopters and non-adopters grew alike (gap ${pp(sl.gap_per_month)} a month, within noise).`;$('naive').textContent=pp(c.naive_lift);$('ctrl').textContent=pp(c.control_growth);$('did').textContent=pp(c.did_lift);
+  $('kpis').innerHTML=[['Monthly AI cost',usd(c.monthly_cost)],['Estimated value',usd(c.monthly_value)+`<br><span>${usd(c.value_low)} to ${usd(c.value_high)}</span>`],
+   ['Company ROI',x(c.roi)],['Net value/mo',usd(c.net)],['Headcount',c.headcount]]
+   .map(([k,v])=>`<div class="card kpi"><b>${v}</b><span>${k}</span></div>`).join('');
+  const d=r.summary.departments, max=Math.max(...Object.values(d).map(v=>Math.abs(v.roi_high)),1);
+  $('depts').innerHTML='<tr><th>Department</th><th class=n>People</th><th class=n>Cost/head</th><th class=n>AI effect</th><th>ROI (95% range)'+RF('z95')+'</th><th>Confidence</th><th class=n>Break-even credit'+RF('realization')+'</th><th class=n>Unused seats</th></tr>'+
+   Object.entries(d).map(([k,v])=>`<tr><td>${k}<br><span class=mute style="font-size:12px">${esc(r.unit_names[k]||'')}</span></td><td class=n>${v.headcount}</td><td class=n>${usd(v.cost_per_head)}</td><td class=n>${pp(v.did_lift)}</td>
+   <td><div class=roi><i style="width:${Math.max(2,Math.abs(v.roi)/max*90)}px;background:${v.roi<0?'var(--bad)':v.roi<1?'var(--warn)':'var(--bar)'}"></i>${roiRange(v)}</div></td>
+   <td class="${v.confidence}">${v.confidence}</td><td class=n>${v.break_even_realization==null?'never':pct(v.break_even_realization)}</td><td class=n>${v.idle}</td></tr>`).join('');
+  $('levels').innerHTML='<tr><th>Level</th><th class=n>People</th><th class=n>Cost/head</th><th class=n>Value/mo</th><th>ROI (95% range)</th></tr>'+
+   Object.entries(r.summary.levels).map(([k,v])=>`<tr><td>${k}</td><td class=n>${v.headcount}</td><td class=n>${usd(v.cost_per_head)}</td><td class=n>${usd(v.monthly_value)}</td><td>${roiRange(v)}</td></tr>`).join('');
+  const t=r.trend;
+  $('alerts').innerHTML=t.alerts.length?t.alerts.map(a=>`<p class=warn>Drift: ${a.department} spend rose ${pct(a.change)} in ${a.month} (${usd(a.previous)} to ${usd(a.latest)}). Check for new rollout or runaway agents.</p>`).join(''):`<p class=mute>No department rose more than ${pct(t.threshold)} (and at least ${usd(t.min_dollars)}) month over month.</p>`;
+  $('trend').innerHTML='<tr><th>Department</th>'+t.months.map(m=>`<th class=n>${m}</th>`).join('')+'</tr>'+
+   Object.entries(t.by_department).map(([k,v])=>`<tr><td>${k}</td>${v.map(n=>`<td class=n>${usd(n)}</td>`).join('')}</tr>`).join('')+
+   `<tr><td><b>Company</b></td>${t.company.map(n=>`<td class=n><b>${usd(n)}</b></td>`).join('')}</tr>`;
+  const v=r.validation;$('valcard').hidden=!(v&&v.idle_seats);
+  if(v&&v.idle_seats){const f=(l,o)=>`<tr><td>${l}</td><td class=mute>${o.vs}</td><td class=n>${o.flagged}</td><td class=n>${o.actual}</td><td class=n>${pct(o.precision)}</td><td class=n>${pct(o.recall)}</td></tr>`;
+   $('val').innerHTML='<tr><th>Flag</th><th>Truth</th><th class=n>Flagged</th><th class=n>Actual</th><th class=n>Precision</th><th class=n>Recall</th></tr>'+
+    f('Unused seats',v.idle_seats)+f('Unused seats',v.idle_vs_nonusers)+f('High-spend seats',v.high_spend)+f('No real return',v.no_value);
+   $('valnote').textContent=`Precision: of the people flagged, how many really are. Recall: of the people who really are, how many were found. The company trend removed by the control group: ${pp(v.naive_vs_did.trend_removed)} points. Messy cases present: ${v.messy.part_time} part-timers, ${v.messy.new_hires} new hires without a baseline, ${v.messy.on_leave} people on leave.`}
+  $('chips').innerHTML=['Where is most of the recoverable spend, and what is the fastest fix?','Which departments can we not tell apart from break-even?','Is a variable budget better than fixed for Sales?','How much would routing routine work to a cheaper model save?']
+   .map(t=>`<span class="pill chip" onclick="q.value=this.textContent">${t}</span>`).join('')}
+function sumActs(){const ks=[...document.querySelectorAll('.ak:checked')];const s=ks.reduce((a,k)=>a+ +k.dataset.s,0);
+  $('actsum').textContent=ks.length?`${ks.length} approved: ${usd(s)}/mo, ${usd(s*12)}/yr`:'Nothing approved yet'}
+function dl(){const ids=[...document.querySelectorAll('.ak:checked')].map(k=>k.dataset.id).join(',');
+  if(!ids){$('uerr').textContent='Tick at least one action first.';return}$('uerr').textContent='';if(window.AIL_DOWNLOAD){window.AIL_DOWNLOAD('/api/actions.csv?ids='+ids);return}location.href='/api/actions.csv?ids='+ids}
+async function load(){render(await j('/api/report'));loadRob();loadMath(mdept);loadEvidence();loadRules()}
+
+const pp1=n=>(n*100).toFixed(1)+'%';
+function renderBench(g){const be=g.breakeven,c=be.company;if(c.breakeven==null){$('betext').textContent='No users yet, so there is no break-even effect.';return}
+  $('betext').textContent=`This spend needs AI to lift output by about ${pp1(c.breakeven)} to pay for itself. The tool measures ${pp1(c.measured)} (range ${pp1(c.low)} to ${pp1(c.high)}): ${c.verdict}. `+
+    (be.published_clear_it?`Every published study of output found more than that (${be.published.min.toFixed(1)}% to ${be.published.max.toFixed(1)}%), so if your rollout performs like those, it pays off. Studies of volunteers and early adopters are a best case, not a forecast.`:`Some published studies found less than that.`);
+  const tb=$('bescen');tb.replaceChildren();const hr=tb.insertRow();for(const h of ['If the effect on users were','Value per month','Net per month','Back per $1','Pays off?']){const th=document.createElement('th');th.textContent=h;if(h!=='If the effect on users were')th.className='n';hr.appendChild(th)}
+  for(const r of g.scenarios){const tr=tb.insertRow();if(r.key==='measured')tr.className='best';const vals=[r.label+' ('+(r.effect*100).toFixed(1)+'%)',usd(r.value),usd(r.net),'$'+r.back_per_dollar.toFixed(2),r.pays_off?'yes':'no'];vals.forEach((v,i)=>{const td=tr.insertCell();td.textContent=v;if(i)td.className='n'})}
+  const dt=$('bedept');dt.replaceChildren();const dh=dt.insertRow();for(const h of ['Department','Needs','Measured (range)','Verdict']){const th=document.createElement('th');th.textContent=h;dh.appendChild(th)}
+  for(const [k,v] of Object.entries(be.by_department)){const tr=dt.insertRow();[k,v.breakeven==null?'n/a':pp1(v.breakeven),pp1(v.measured)+' ('+pp1(v.low)+' to '+pp1(v.high)+')',v.verdict].forEach(x=>{tr.insertCell().textContent=x})}
+  const L=g.by_level;$('lvtext').textContent='In your data: '+L.verdict+'.'+(L.difference!=null?` Difference between less and more experienced: ${(L.difference*100).toFixed(1)} points.`:'');
+  const lt=$('lvtab');lt.replaceChildren();const lh=lt.insertRow();for(const h of ['Level','People using AI','AI effect (95% range)']){const th=document.createElement('th');th.textContent=h;lh.appendChild(th)}
+  for(const x of L.levels){const tr=lt.insertRow();[x.level,String(x.treated),x.effect==null?'too few people':pp1(x.effect)+' ('+pp1(x.low)+' to '+pp1(x.high)+')'].forEach(v=>{tr.insertCell().textContent=v})}
+  $('lvpub').replaceChildren(...L.published.map(p=>{const li=document.createElement('li');li.textContent=p.study+': '+p.text;return li}))}
+async function checkPerception(){const v=parseFloat($('pgin').value);if(isNaN(v)){$('pgtext').textContent='Enter a number first.';return}
+  try{const r=await j('/api/perception?pct='+encodeURIComponent(v));$('pgtext').textContent=r.text;$('pgnote').textContent=r.note}catch(e){$('pgtext').textContent=e.message}}
+
+let VPREV=null;
+function vrow(key,label,unit,info,def){const tr=document.createElement('tr');tr.dataset.key=key;
+  const mk=(html)=>{const td=document.createElement('td');td.innerHTML=html;tr.appendChild(td);return td};
+  const lab=document.createElement('td');lab.textContent=label;tr.appendChild(lab);
+  const un=document.createElement('td');un.textContent=unit;un.className='mute';tr.appendChild(un);
+  const mode=def.mode||'time';
+  const sel=document.createElement('select');sel.className='vin';sel.dataset.f='mode';[['time','Hours x rate'],['unit','$ per unit']].forEach(([v,t])=>{const o=document.createElement('option');o.value=v;o.textContent=t;if(v===mode)o.selected=true;sel.appendChild(o)});
+  const td=document.createElement('td');td.appendChild(sel);tr.appendChild(td);
+  const inp=(f,ph,val)=>{const i=document.createElement('input');i.type='number';i.step='any';i.min='0';i.className='vin num';i.dataset.f=f;i.placeholder=ph;if(val!=null)i.value=val;const t=document.createElement('td');t.appendChild(i);tr.appendChild(t);return i};
+  const hpu=inp('hours_per_unit',info?String(info.data_hours_per_unit):'',def.hours_per_unit);
+  const rate=inp('hourly_rate',info?'$'+info.data_hourly_rate:'',def.hourly_rate);
+  const vpu=inp('value_per_unit','$ per unit',def.value_per_unit);
+  const ben=inp('benefit_per_user','$0',def.benefit_per_user);
+  const eff=document.createElement('td');eff.className='n';eff.textContent=info?('$'+info.effective_unit_value.toFixed(2)+(info.defined?' (yours)':' (data)')):'';tr.appendChild(eff);
+  const sync=()=>{const u=sel.value==='unit';hpu.disabled=rate.disabled=u;vpu.disabled=!u};sel.onchange=sync;sync();return tr}
+
+function urow(d,info,def){const tr=document.createElement('tr');tr.dataset.key=d;
+  const a=document.createElement('td');a.textContent=d;tr.appendChild(a);
+  const n=document.createElement('td');const ni=document.createElement('input');ni.className='vin';ni.dataset.f='unit_name';ni.placeholder=info.data_unit;ni.maxLength=60;ni.value=def.unit_name||'';ni.style.maxWidth='280px';ni.style.width='220px';n.appendChild(ni);tr.appendChild(n);
+  const m=document.createElement('td');const w=def.outcome_weights||{};const counts=info.metrics.filter(x=>!x.duration);
+  if(counts.length<2){m.className='mute';m.textContent='One outcome column.'}
+  else counts.forEach(x=>{const sp=document.createElement('span');sp.style.cssText='display:inline-flex;align-items:center;gap:4px;margin:2px 12px 2px 0';
+    const i=document.createElement('input');i.type='number';i.step='any';i.min='0';i.className='vin num';i.dataset.metric=x.key;i.placeholder=x.key==='units'?'1':'0';if(w[x.key]!=null)i.value=w[x.key];i.style.width='72px';sp.appendChild(i);
+    const l=document.createElement('span');l.className='mute';l.textContent='x '+x.label;sp.appendChild(l);m.appendChild(sp)});
+  tr.appendChild(m);
+  const sd=document.createElement('td');const times=info.metrics.filter(x=>x.duration);
+  if(!times.length){sd.className='mute';sd.textContent='Volume. (No time column found: name one like outcome_task_minutes to measure speed.)'}
+  else{const sel=document.createElement('select');sel.className='vin';sel.dataset.f='speed_metric';const o0=document.createElement('option');o0.value='';o0.textContent='Volume (the metrics above)';sel.appendChild(o0);
+    times.forEach(x=>{const o=document.createElement('option');o.value=x.key;o.textContent='Speed: '+x.label;if(info.speed_metric===x.key)o.selected=true;sel.appendChild(o)});
+    const us=document.createElement('select');us.className='vin';us.dataset.f='speed_unit_minutes';us.style.marginLeft='6px';Object.entries(R.value.speed_units).forEach(([k,v])=>{const o=document.createElement('option');o.value=v;o.textContent='in '+k;if(Number(info.speed_unit_minutes)===v)o.selected=true;us.appendChild(o)});
+    const sync=()=>{us.hidden=!sel.value};sel.onchange=sync;sync();sd.appendChild(sel);sd.appendChild(us)}
+  tr.appendChild(sd);return tr}
+function renderUnits(V){const t=$('utab');if(!t)return;t.replaceChildren();const h=t.insertRow();['Department','Name of one unit','Count each metric as (weight)','Measure the effect by'].forEach(x=>{const th=document.createElement('th');th.textContent=x;h.appendChild(th)});
+  for(const [d,info] of Object.entries(V.departments))t.appendChild(urow(d,info,V.defs[d]||{}))}
+function renderValue(r){const V=r.value;if(!V)return;const t=$('vtab');t.replaceChildren();const h=t.insertRow();
+  ['Department','Output unit','Method','Hours per unit','Hourly rate','Dollars per unit','Extra benefit per user / month','In effect now'].forEach((x,i)=>{const th=document.createElement('th');th.textContent=x;if(i===7)th.className='n';h.appendChild(th)});
+  t.appendChild(vrow('*','All departments','(default)',null,V.defs['*']||{}));
+  for(const [d,info] of Object.entries(V.departments))t.appendChild(vrow(d,d,info.unit,info,V.defs[d]||{}));
+  renderUnits(V);
+  $('vjson').value=JSON.stringify(V.defs,null,2);
+  $('vben').textContent=Object.values(V.defs).some(x=>x.benefit_per_user)?', plus any extra benefit per user':'';
+  document.querySelectorAll('.vflag').forEach(e=>e.hidden=!V.custom)}
+function collectValue(){const defs={};document.querySelectorAll('#vtab tr[data-key]').forEach(tr=>{const d={};
+  tr.querySelectorAll('.vin').forEach(i=>{if(i.disabled&&i.dataset.f!=='mode')return;const v=i.value;if(i.dataset.f==='mode'){d.mode=v;return}if(v!=='')d[i.dataset.f]=parseFloat(v)});
+  const meaningful=Object.keys(d).some(k=>k!=='mode')||d.mode==='unit';if(meaningful)defs[tr.dataset.key]=d});
+  document.querySelectorAll('#utab tr[data-key]').forEach(tr=>{const k=tr.dataset.key,info=R.value.departments[k];const nm=tr.querySelector('[data-f=unit_name]').value.trim();
+    const ws=[...tr.querySelectorAll('[data-metric]')];const w={};let any=false;ws.forEach(i=>{if(i.value!=='')any=true;w[i.dataset.metric]=i.value===''?(i.dataset.metric==='units'?1:0):parseFloat(i.value)});
+    const d=defs[k]||{};if(nm&&nm!==info.data_unit)d.unit_name=nm;const spm=tr.querySelector('[data-f=speed_metric]');if(spm&&spm.value){d.speed_metric=spm.value;d.speed_unit_minutes=parseFloat(tr.querySelector('[data-f=speed_unit_minutes]').value)}if(any){const isDefault=Object.entries(w).every(([m,v])=>v===(m==='units'?1:0));if(!isDefault)d.outcome_weights=w}
+    if(Object.keys(d).length)defs[k]=d});return defs}
+async function sendValue(defs){$('verr').textContent='';$('vmsg').textContent='';const before=R?{v:R.summary.company.monthly_value,roi:R.summary.company.roi,net:R.summary.company.net}:null;
+  try{const rep=await j('/api/value',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({defs})});render(rep);loadRob();loadMath(mdept);loadEvidence();
+    const c=rep.summary.company;$('vmsg').textContent=rep.value.custom?'Applied. Every number now uses your definition.':'Back to the data\'s figures.';
+    if(before){$('vdelta').hidden=false;$('vdtext').textContent=`Estimated value per month: ${usd(before.v)} to ${usd(c.monthly_value)}. Dollars back per $1: $${(1+before.roi).toFixed(2)} to $${(1+c.roi).toFixed(2)}. Net per month: ${usd(before.net)} to ${usd(c.net)}.`}}
+  catch(e){$('verr').textContent=e.message}}
+function applyValue(){sendValue(collectValue())}
+function resetValue(){sendValue({})}
+function applyValueJson(){try{sendValue(JSON.parse($('vjson').value||'{}'))}catch(e){$('verr').textContent='That is not valid JSON.'}}
+function downloadValue(){const b=new Blob([JSON.stringify(R&&R.value?R.value.defs:{},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='ai-ledger-value-definition.json';a.click();URL.revokeObjectURL(a.href)}
+
+let RULES_INFO=null;
+function pctShow(x){return Math.round(x*10000)/100}
+function renderRules(g){RULES_INFO=g;const box=$('rulebox');box.replaceChildren();let grp='',card=null,tb=null;
+  for(const r of g.rules){if(r.group!==grp){grp=r.group;card=document.createElement('div');card.className='card';const h=document.createElement('h2');h.textContent=grp;card.appendChild(h);tb=document.createElement('table');card.appendChild(tb);box.appendChild(card)}
+    const tr=tb.insertRow();const l=tr.insertCell();l.textContent=r.label;const rf=document.createElement('span');rf.innerHTML=RF(r.ref);l.appendChild(rf.firstChild);
+    const c=tr.insertCell();const i=document.createElement('input');i.className='vin num';i.dataset.rule=r.field;i.dataset.type=r.type;
+    if(r.type==='bool'){i.type='checkbox';i.checked=!!r.current;i.style.width='auto'}else{i.type='number';i.step=r.type==='pct'?'any':r.step;i.min=r.type==='pct'?r.min*100:r.min;i.max=r.type==='pct'?r.max*100:r.max;i.value=r.type==='pct'?pctShow(r.current):r.current}
+    c.appendChild(i);if(r.type==='pct'){const u=document.createElement('span');u.className='mute';u.textContent=' %';c.appendChild(u)}if(r.type==='money'){i.style.width='110px'}
+    const d=tr.insertCell();d.className='mute';d.textContent='default '+(r.type==='bool'?(r.default?'on':'off'):r.type==='pct'?pctShow(r.default)+'%':r.type==='money'?'$'+r.default:r.default);
+    if(r.current!==r.default)d.style.color='var(--warn)'}
+  const t=$('rtab');t.replaceChildren();const h=t.insertRow();['Department','Routine share (%)','Default'].forEach(x=>{const th=document.createElement('th');th.textContent=x;h.appendChild(th)});
+  for(const x of g.routine){const tr=t.insertRow();tr.insertCell().textContent=x.department;const c=tr.insertCell();const i=document.createElement('input');i.type='number';i.min=0;i.max=100;i.step='any';i.className='vin num';i.dataset.routine=x.department;i.value=pctShow(x.current);c.appendChild(i);const d=tr.insertCell();d.className='mute';d.textContent=pctShow(x.default)+'%';if(x.current!==x.default)d.style.color='var(--warn)'}
+  document.querySelectorAll('.rflag').forEach(e=>e.hidden=!g.customized)}
+async function loadRules(){try{renderRules(await j('/api/rules'))}catch(e){}}
+function collectRules(){const values={};document.querySelectorAll('#rulebox [data-rule]').forEach(i=>{const t=i.dataset.type;if(t==='bool')values[i.dataset.rule]=i.checked;else if(i.value!==''){const v=parseFloat(i.value);values[i.dataset.rule]=t==='pct'?v/100:v}});
+  const routine={};document.querySelectorAll('#rtab [data-routine]').forEach(i=>{if(i.value!=='')routine[i.dataset.routine]=parseFloat(i.value)/100});return{values,routine}}
+async function sendRules(body){$('rerr').textContent='';$('rwarn').textContent='';$('rmsg').textContent='';
+  try{const rep=await j('/api/rules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});render(rep);loadRob();loadMath(mdept);loadEvidence();loadRules();
+    $('rmsg').textContent=body.reset?'Back to the defaults.':'Applied. Every number now uses these rules.';$('rwarn').textContent=(rep.rule_warnings||[]).join(' ')}
+  catch(e){$('rerr').textContent=e.message}}
+function applyRules(){const c=collectRules();const d=RULES_INFO?Object.fromEntries(RULES_INFO.routine.map(x=>[x.department,x.default])):{};
+  const routine={};for(const [k,v] of Object.entries(c.routine))if(Math.abs(v-(d[k]??v))>1e-9)routine[k]=v;sendRules({values:c.values,routine})}
+function resetRules(){sendRules({reset:true})}
+async function loadEvidence(){try{const g=await j('/api/evidence');window.EVIDENCE=g;const c=g.comparison;
+  $('evtext').textContent=c.text;const sp=g.speed&&g.speed.combined;$('evspeed').textContent=sp?`Measured as time per task (${Object.keys(g.speed.departments).join(' and ')}): ${(Math.abs(sp.effect)*100).toFixed(1)}% ${sp.effect<0?'less':'more'} time per task for people using AI (range ${(Math.min(Math.abs(sp.low),Math.abs(sp.high))*100).toFixed(1)}% to ${(Math.max(Math.abs(sp.low),Math.abs(sp.high))*100).toFixed(1)}%). That is the figure to set against the time-on-task studies below: Peng, 55.8% less time on one task; Google, about 21% less; METR, 19% more.`:'';$('evctx').replaceChildren(...c.context.map(t=>{const li=document.createElement('li');li.textContent=t;return li}));
+  $('evnote').textContent='Numbers were read from the sources linked below on '+g.verified_on+'. Where a figure could not be confirmed from a primary source it is marked, or left out.';
+  $('evleft').replaceChildren(...g.left_out.map(t=>{const li=document.createElement('li');li.textContent=t;return li}));
+  $('evlist').replaceChildren(...g.studies.map(x=>{const d=document.createElement('div');d.className='card gt';
+    const h=document.createElement('h3');const a=document.createElement('a');a.textContent=x.short+' ('+x.year+')';if(/^https:\/\//.test(x.url)){a.href=x.url;a.target='_blank';a.rel='noopener'}a.style.color='var(--accent)';h.appendChild(a);d.appendChild(h);
+    const p=document.createElement('p');p.textContent=x.reported;d.appendChild(p);
+    const m=document.createElement('p');m.className='mute';m.style.fontSize='12px';m.textContent=x.authors+'. '+x.design+'. '+x.n+'.';d.appendChild(m);
+    const dt=document.createElement('details');const sm=document.createElement('summary');sm.textContent='Caveats and what was verified';dt.appendChild(sm);
+    const c1=document.createElement('p');c1.className='mute';c1.style.fontSize='12px';c1.textContent='Caveats: '+x.caveats;dt.appendChild(c1);
+    const c2=document.createElement('p');c2.className='mute';c2.style.fontSize='12px';c2.textContent='Verified: '+x.verified;dt.appendChild(c2);d.appendChild(dt);return d}));
+  renderBench(g);loadSources();if(window.renderCharts)window.renderCharts();if(typeof renderOverview==='function')renderOverview()}catch(e){$('evtext').textContent='Could not load the evidence: '+e.message}}
+
+let mdept='';
+async function loadMath(d){try{const g=await j('/api/explain'+(d?('?department='+encodeURIComponent(d)):''));const e=g.department;mdept=e.department;
+  $('mdept').innerHTML=e.departments.map(x=>`<option ${x===mdept?'selected':''}>${x}</option>`).join('');
+  $('msteps').innerHTML=e.steps.map(t=>`<div class=step><b>${t.title}</b><div class=fm>${t.formula}</div><div class=mute>${t.working}</div><div class=res>= <b style="display:inline">${t.result}</b></div>${(t.refs&&t.refs.length)?'<div class=stepref>Values from: '+t.refs.map(x=>refName(x)+RF(x)).join(' · ')+'</div>':''}</div>`).join('');
+  $('mpols').innerHTML=g.policies.map(t=>`<div class=step><b>${t.policy}</b><div class=fm>${t.formula}</div><div class=mute>${t.working}</div>${(t.refs&&t.refs.length)?'<div class=stepref>Values from: '+t.refs.map(x=>refName(x)+RF(x)).join(' · ')+'</div>':''}</div>`).join('')}
+  catch(err){$('msteps').textContent='Could not load: '+err.message}}
+
+async function loadRob(){$('robnote').textContent='Computing 180 assumption scenarios…';
+  try{const g=await j('/api/robustness');ROB=g;renderOverview();renderGlossary();const k=g.kinds;
+   $('kinds').innerHTML=[['Measured','measured','var(--good)','Counted from your data.'],['Estimated','estimated','var(--accent)','Computed with a range.'],['Assumed','assumed','var(--warn)','Sliders. Opinion.'],['Judgement','judgement','var(--bad)','A choice we made, shown so you can disagree.']]
+    .map(([t,key,col,sub])=>`<div class="card" style="margin:0"><b style="color:${col}">${t}</b> <span class=mute>${sub}</span><ul style="margin:6px 0 0;padding-left:18px">${k[key].map(i=>`<li>${i}</li>`).join('')}</ul></div>`).join('');
+   const lab=h=>h>=.95?'<span class=clear>holds</span>':h<=.05?'<span class=restrict>fails</span>':'<span class=uncertain>depends</span>';
+   $('robdec').innerHTML='<tr><th>Decision</th><th class=n>Holds in</th><th>Verdict</th><th>Note</th></tr>'+g.decisions.map(d=>`<tr><td>${d.claim}</td><td class=n>${pct(d.holds)}</td><td>${lab(d.holds)}</td><td class=mute>${d.note||''}</td></tr>`).join('');
+   $('robdep').innerHTML='<tr><th>Department ROI above zero</th><th class=n>Holds in</th><th>Verdict</th></tr>'+Object.entries(g.departments).map(([d,v])=>`<tr><td>${d}</td><td class=n>${pct(v.roi_positive)}</td><td>${lab(v.roi_positive)}</td></tr>`).join('');
+   $('robnote').textContent=`Each decision is re-run in ${g.scenarios} scenarios: realization ${g.grid.realization.map(x=>pct(x)).join(', ')}; elasticity ${g.grid.elasticity.join(', ')}; pay-per-use price ${g.grid.ppu_multiplier.join(', ')}x; seat savings realized ${g.grid.seat_savings_realized.map(x=>pct(x)).join(', ')}. "Holds" means true in at least 95% of them. Act on what holds; for the rest, get the missing number (a vendor quote, a pilot) before deciding.`}
+  catch(e){$('robnote').textContent='Could not compute: '+e.message}}
+
+let tm;function sliders(){$('rv').textContent=real.value+'%';$('ev').textContent=(elas.value/100).toFixed(1);$('cv').textContent=(cheap.value/100).toFixed(2);$('pv').textContent=(ppu.value/100).toFixed(1)+'x';
+  clearTimeout(tm);tm=setTimeout(async()=>{try{render(await j('/api/assumptions',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({realization:real.value/100,elasticity:elas.value/100,cheap_price_per_m:cheap.value/100,ppu_multiplier:ppu.value/100})}));loadRob();loadMath(mdept);loadEvidence()}catch(e){$('uerr').textContent=e.message}},250)}
+real.oninput=elas.oninput=cheap.oninput=ppu.oninput=sliders;
+$('file').onchange=async e=>{$('uerr').textContent='';const f=new FormData();f.append('file',e.target.files[0]);
+  try{render(await j('/api/upload',{method:'POST',body:f}));loadRob();loadMath(mdept);loadEvidence();loadRules();$('src').textContent=e.target.files[0].name}catch(err){$('uerr').textContent=err.message}};
+async function reset(){$('uerr').textContent='';render(await j('/api/reset',{method:'POST'}));loadRob();loadMath(mdept);loadEvidence();loadRules();$('src').textContent='synthetic company';real.value=50;elas.value=50;cheap.value=60;ppu.value=160;$('rv').textContent='50%';$('ev').textContent='0.5';$('cv').textContent='0.60';$('pv').textContent='1.6x'}
+async function brief(){$('bb').disabled=true;$('brief').textContent='Thinking…';
+  try{const b=await j('/api/brief');$('brief').className='ans md';$('brief').innerHTML=md(b.brief)+'<p class="mute">model: '+esc(b.model)+'</p>'}catch(e){$('brief').innerHTML='<span class=err></span>';$('brief').firstChild.textContent=e.message}
+  $('bb').disabled=false}
+async function ask(){if(!q.value.trim())return;$('ab').disabled=true;$('ans').textContent='Thinking…';$('aerr').textContent='';$('evpre').textContent='';
+  try{const a=await j('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q.value})});
+   $('ans').className='ans md';$('ans').innerHTML=md(a.answer)+'<p class="mute">model: '+esc(a.model)+'</p>';$('evpre').textContent=JSON.stringify(a.evidence,null,1)}
+  catch(e){$('ans').textContent='';$('aerr').textContent=e.message}
+  $('ab').disabled=false}
+load();
+</script>
+</body>
+</html>
